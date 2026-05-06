@@ -1,0 +1,32 @@
+export const PLAN_FEATURES = {
+  starter: {
+    centeringReports: true,
+    masterSets: 3,
+    regradeArbitrage: 0,
+    inventory: false,
+    portfolio: false,
+    sealedTracking: false,
+    priceAlerts: 0,
+    packOpeningAnalytics: false,
+  },
+  collector: {
+    centeringReports: true,
+    masterSets: Infinity,
+    regradeArbitrage: 50,
+    inventory: true,
+    portfolio: false,
+    sealedTracking: false,
+    priceAlerts: 10,
+    packOpeningAnalytics: false,
+  },
+  pro: {
+    centeringReports: true,
+    masterSets: Infinity,
+    regradeArbitrage: Infinity,
+    inventory: true,
+    portfolio: true,
+    sealedTracking: true,
+    priceAlerts: Infinity,
+    packOpeningAnalytics: true,
+  },
+} as const;
