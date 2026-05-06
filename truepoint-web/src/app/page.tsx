@@ -415,11 +415,11 @@ export default function LandingPage() {
               Sign in
             </Link>
             <Link
-              href='/register'
+              href='#pricing'
               className='btn-primary'
               style={{ padding: "8px 20px", fontSize: 13 }}
             >
-              Get started
+              See pricing
             </Link>
           </div>
         </div>
@@ -618,11 +618,15 @@ export default function LandingPage() {
               className='animate-fade-up delay-500'
               style={{ display: "flex", gap: 16 }}
             >
-              <Link href='/register' className='btn-primary'>
-                Start for free
+              <Link href='#pricing' className='btn-primary'>
+                See pricing
               </Link>
-              <Link href='#features' className='btn-secondary'>
-                See how it works
+              <Link
+                href='/login'
+                className='btn-secondary'
+                style={{ padding: "16px 40px", fontSize: 15 }}
+              >
+                Sign in
               </Link>
             </div>
           </div>
@@ -1322,7 +1326,7 @@ export default function LandingPage() {
                   ))}
                 </div>
                 <Link
-                  href='/register'
+                  href={`/register?plan=${plan.name.toLowerCase()}`}
                   className={plan.featured ? "btn-primary" : "btn-secondary"}
                   style={{
                     display: "block",
