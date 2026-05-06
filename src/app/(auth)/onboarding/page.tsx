@@ -263,15 +263,30 @@ function ProfileStep({
   });
 
   const [serverError, setServerError] = useState<string | null>(null);
-  // eslint-disable-next-line react-hooks/incompatible-library
   const selectedGrading = watch("preferred_grading_company");
   const selectedCurrency = watch("currency");
 
   const onSubmit = async (data: ProfileData) => {
     setServerError(null);
     try {
-      await api.post("/users/me", data);
-      await api.post("/users/me/notifications", {});
+      // Always PUT — profile already exists from register step
+      await api.put("/users/me", {
+        username: data.username,
+        currency: data.currency,
+        preferred_grading_company: data.preferred_grading_company,
+      });
+
+      // Create notifications only if they don't exist — swallow the 409 conflict
+      try {
+        await api.post("/users/me/notifications", {
+          notify_price_alerts: true,
+          notify_grading_updates: true,
+          notify_marketing: false,
+        });
+      } catch {
+        // 409 means already exists — that's fine, continue
+      }
+
       onNext(data);
     } catch (err: unknown) {
       const message =
@@ -305,7 +320,7 @@ function ProfileStep({
             lineHeight: 1.6,
           }}
         >
-          This is how other collectors will find you on TruePoint.
+          Choose a username and set your collection preferences.
         </p>
       </div>
 
@@ -324,21 +339,14 @@ function ProfileStep({
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Input
-          label='Username'
-          placeholder='charizard_collector'
-          error={errors.username?.message}
-          hint='Public — letters, numbers, underscores'
-          {...register("username")}
-        />
-        <Input
-          label='Full name'
-          placeholder='Omar Jandali'
-          error={errors.full_name?.message}
-          {...register("full_name")}
-        />
-      </div>
+      {/* Username only — full_name already collected in register */}
+      <Input
+        label='Username'
+        placeholder='charizard_collector'
+        error={errors.username?.message}
+        hint='Public — letters, numbers, and underscores only'
+        {...register("username")}
+      />
 
       {/* Currency selector */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
