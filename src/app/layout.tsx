@@ -17,16 +17,29 @@ export const metadata: Metadata = {
   title: "TruePoint TCG — The Collector's Intelligence Platform",
   description:
     "Precision centering analysis, real-time market intelligence, and portfolio management for Pokémon TCG collectors.",
-  keywords: ["pokemon tcg", "card grading", "centering tool", "psa", "collection tracker"],
+  keywords: [
+    "pokemon tcg",
+    "card grading",
+    "centering tool",
+    "psa",
+    "collection tracker",
+  ],
+  icons: {
+    icon: "/TP-icon-white.png",
+    shortcut: "/TP-icon-white.png",
+    apple: "/TP-icon-white.png",
+  },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   return (
     <html
-      lang="en"
+      lang='en'
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className='min-h-full flex flex-col'>{children}</body>
     </html>
   );
 }

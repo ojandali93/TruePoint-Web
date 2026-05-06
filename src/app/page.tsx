@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 const TICKER_ITEMS = [
   {
@@ -351,47 +352,14 @@ export default function LandingPage() {
             justifyContent: "space-between",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                background: "var(--gold)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <span
-                style={{
-                  color: "#0D0E11",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  fontFamily: "DM Mono, monospace",
-                }}
-              >
-                TP
-              </span>
-            </div>
-            <span
-              className='font-display'
-              style={{ fontSize: 20, letterSpacing: "0.08em" }}
-            >
-              TRUEPOINT
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                color: "var(--gold)",
-                letterSpacing: "0.12em",
-                marginTop: 2,
-                fontFamily: "DM Mono, monospace",
-              }}
-            >
-              TCG
-            </span>
-          </div>
+          <Image
+            src='/tp-logo-gold-white.png'
+            alt='TruePoint TCG'
+            height={36}
+            width={160}
+            style={{ objectFit: "contain" }}
+            priority
+          />
           <div style={{ display: "flex", gap: 28, alignItems: "center" }}>
             {["Features", "Collection", "Pricing", "Roadmap"].map((l) => (
               <a
