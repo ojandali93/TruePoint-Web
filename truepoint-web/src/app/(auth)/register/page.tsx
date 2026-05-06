@@ -9,190 +9,364 @@ import { createClient } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { ROUTES } from "../../../constants/routes";
+import api from "../../../lib/api";
+
+// ─── Schema ───────────────────────────────────────────────────────────────────
 
 const schema = z
   .object({
+    full_name: z
+      .string()
+      .min(2, "Enter your full name")
+      .max(100, "Name is too long"),
     email: z.string().email("Enter a valid email address"),
+    phone: z
+      .string()
+      .regex(/^\+?[1-9]\d{7,14}$/, "Enter a valid phone number")
+      .optional()
+      .or(z.literal("")),
     password: z
       .string()
-      .min(8, "Password must be at least 8 characters")
+      .min(8, "At least 8 characters")
       .regex(/[A-Z]/, "Must contain at least one uppercase letter")
       .regex(/[0-9]/, "Must contain at least one number"),
-    confirmPassword: z.string(),
+    confirm_password: z.string(),
   })
-  .refine((data) => data.password === data.confirmPassword, {
+  .refine((data) => data.password === data.confirm_password, {
     message: "Passwords do not match",
-    path: ["confirmPassword"],
+    path: ["confirm_password"],
   });
 
 type FormData = z.infer<typeof schema>;
 
-const PLAN_DETAILS = {
-  starter: {
-    name: "Starter",
-    price: "Free",
-    color: "#3DAA6E",
-    features: [
-      "TruePoint centering score",
-      "Master set tracker (3 sets)",
-      "Card search & live prices",
-    ],
-  },
-  collector: {
-    name: "Collector",
-    price: "$9.99/mo",
-    color: "#C9A84C",
-    features: [
-      "Regrade arbitrage (50/mo)",
-      "Unlimited master sets",
-      "Singles & graded inventory",
-    ],
-  },
-  pro: {
-    name: "Pro",
-    price: "$19.99/mo",
-    color: "#BA7517",
-    features: [
-      "Unlimited regrade arbitrage",
-      "Sealed collection tracking",
-      "Full portfolio dashboard",
-    ],
-  },
+// ─── Plan badge shown at top ──────────────────────────────────────────────────
+
+const PLAN_META = {
+  starter: { name: "Starter", price: "Free", color: "#3DAA6E" },
+  collector: { name: "Collector", price: "$9.99/mo", color: "#C9A84C" },
+  pro: { name: "Pro", price: "$19.99/mo", color: "#BA7517" },
 } as const;
 
-type PlanKey = keyof typeof PLAN_DETAILS;
+type PlanKey = keyof typeof PLAN_META;
+
+function SelectedPlanBadge({ plan }: { plan: PlanKey }) {
+  const meta = PLAN_META[plan];
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: `1px solid ${meta.color}44`,
+        borderRadius: 10,
+        padding: "12px 16px",
+        marginBottom: 24,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: meta.color,
+          }}
+        />
+        <span
+          style={{
+            fontSize: 13,
+            color: "var(--text-primary)",
+            fontWeight: 500,
+          }}
+        >
+          {meta.name} plan
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            color: meta.color,
+            fontFamily: "DM Mono, monospace",
+            background: `${meta.color}18`,
+            padding: "2px 8px",
+            borderRadius: 20,
+            border: `1px solid ${meta.color}33`,
+          }}
+        >
+          {meta.price}
+        </span>
+      </div>
+      <Link
+        href='/#pricing'
+        style={{
+          fontSize: 11,
+          color: "var(--text-dim)",
+          textDecoration: "none",
+          letterSpacing: "0.04em",
+        }}
+      >
+        Change
+      </Link>
+    </div>
+  );
+}
+
+// ─── Password strength indicator ──────────────────────────────────────────────
+
+function PasswordStrength({ password }: { password: string }) {
+  if (!password) return null;
+
+  const checks = [
+    { label: "8+ characters", pass: password.length >= 8 },
+    { label: "Uppercase letter", pass: /[A-Z]/.test(password) },
+    { label: "Number", pass: /[0-9]/.test(password) },
+  ];
+
+  const passed = checks.filter((c) => c.pass).length;
+  const color =
+    passed === 1 ? "var(--red)" : passed === 2 ? "#E8A838" : "var(--green)";
+  const label = passed === 1 ? "Weak" : passed === 2 ? "Fair" : "Strong";
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{
+              flex: 1,
+              height: 3,
+              borderRadius: 2,
+              background: i <= passed ? color : "var(--border)",
+              transition: "background 0.2s ease",
+            }}
+          />
+        ))}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ display: "flex", gap: 12 }}>
+          {checks.map((c) => (
+            <span
+              key={c.label}
+              style={{
+                fontSize: 10,
+                color: c.pass ? "var(--green)" : "var(--text-dim)",
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                transition: "color 0.2s ease",
+              }}
+            >
+              {c.pass ? "✓" : "○"} {c.label}
+            </span>
+          ))}
+        </div>
+        <span style={{ fontSize: 10, color, fontWeight: 500 }}>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Form ────────────────────────────────────────────────────────────────
 
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const planParam = (searchParams.get("plan") ?? "starter") as PlanKey;
-  const plan = PLAN_DETAILS[planParam] ?? PLAN_DETAILS.starter;
+  const plan = PLAN_META[planParam] ? planParam : "starter";
 
   const [serverError, setServerError] = useState<string | null>(null);
+  const [step, setStep] = useState<"form" | "verify">("form");
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const supabase = createClient();
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const password = watch("password", "");
+
   const onSubmit = async (data: FormData) => {
     setServerError(null);
+
     try {
-      const { error } = await supabase.auth.signUp({
+      // Step 1 — Create Supabase auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           emailRedirectTo: `${window.location.origin}/api/auth/callback`,
-          data: { plan: planParam },
         },
       });
 
-      if (error) {
-        setServerError(error.message);
+      if (authError) {
+        if (authError.message.includes("already registered")) {
+          setServerError(
+            "An account with this email already exists. Sign in instead.",
+          );
+        } else {
+          setServerError(authError.message);
+        }
         return;
       }
 
-      // For starter — go directly to onboarding
-      // For paid plans — go to billing setup (placeholder for now)
-      if (planParam === "starter") {
-        router.push(ROUTES.ONBOARDING);
-      } else {
-        router.push(`${ROUTES.ONBOARDING}?plan=${planParam}&setup=billing`);
+      if (!authData.user) {
+        setServerError("Account creation failed. Please try again.");
+        return;
       }
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+
+      // Step 2 — Create profile row immediately
+      // We need the session for the API call — sign in right after signup
+      // If email confirmation is disabled in Supabase, session is available immediately
+      const session = authData.session;
+
+      if (session) {
+        // Email confirmation is off — session available immediately
+        try {
+          await api.post("/users/me", {
+            full_name: data.full_name,
+            currency: "USD",
+            preferred_grading_company: "PSA",
+          });
+
+          // Save phone separately if provided
+          if (data.phone) {
+            await supabase.auth.updateUser({ phone: data.phone });
+          }
+        } catch (profileErr: unknown) {
+          // Profile creation failed — log but don't block the flow
+          // The user can complete profile in onboarding
+          const message =
+            profileErr instanceof Error ? profileErr.message : "Unknown error";
+          console.error("Profile creation error:", message);
+        }
+
+        // Go to collector profile step (Step 2 of onboarding)
+        router.push(`/onboarding?plan=${plan}&step=collector`);
+      } else {
+        // Email confirmation is on — user needs to verify before we can create profile
+        setSubmittedEmail(data.email);
+        setStep("verify");
+      }
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again.";
+      setServerError(message);
     }
   };
 
-  return (
-    <div>
-      {/* Selected plan indicator */}
+  // ─── Email verification screen ──────────────────────────────────────────────
+  if (step === "verify") {
+    return (
       <div
         style={{
           background: "var(--surface)",
-          border: `1px solid ${plan.color}44`,
-          borderRadius: 10,
-          padding: "16px 20px",
-          marginBottom: 28,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: "40px 32px",
+          textAlign: "center",
         }}
       >
-        <div>
-          <div
-            style={{
-              fontSize: 10,
-              color: "var(--text-dim)",
-              letterSpacing: "0.08em",
-              marginBottom: 4,
-              fontFamily: "DM Mono, monospace",
-            }}
-          >
-            SELECTED PLAN
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span
-              style={{
-                fontSize: 15,
-                fontWeight: 500,
-                color: "var(--text-primary)",
-              }}
-            >
-              {plan.name}
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                color: plan.color,
-                fontFamily: "DM Mono, monospace",
-                background: `${plan.color}18`,
-                padding: "2px 8px",
-                borderRadius: 20,
-                border: `1px solid ${plan.color}33`,
-              }}
-            >
-              {plan.price}
-            </span>
-          </div>
-          <div
-            style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}
-          >
-            {plan.features.map((f) => (
-              <span
-                key={f}
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-secondary)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <span style={{ color: plan.color, fontSize: 9 }}>✓</span> {f}
-              </span>
-            ))}
-          </div>
-        </div>
-        <Link
-          href='#pricing'
-          onClick={() => router.back()}
+        <div
           style={{
-            fontSize: 11,
-            color: "var(--text-dim)",
-            textDecoration: "none",
-            letterSpacing: "0.04em",
-            whiteSpace: "nowrap",
-            paddingLeft: 16,
+            width: 56,
+            height: 56,
+            borderRadius: "50%",
+            background: "rgba(201,168,76,0.15)",
+            border: "1px solid rgba(201,168,76,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 22,
+            margin: "0 auto 20px",
           }}
         >
-          Change plan
-        </Link>
+          ✉
+        </div>
+        <h2
+          style={{
+            fontSize: 20,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 10,
+          }}
+        >
+          Check your email
+        </h2>
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--text-secondary)",
+            lineHeight: 1.7,
+            marginBottom: 24,
+          }}
+        >
+          We sent a confirmation link to{" "}
+          <span
+            style={{
+              color: "var(--gold)",
+              fontFamily: "DM Mono, monospace",
+              fontSize: 12,
+            }}
+          >
+            {submittedEmail}
+          </span>
+          . Click the link to activate your account and continue setup.
+        </p>
+        <div
+          style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "14px",
+            fontSize: 12,
+            color: "var(--text-dim)",
+            lineHeight: 1.6,
+          }}
+        >
+          Didn&apos;t receive it? Check your spam folder or{" "}
+          <button
+            onClick={async () => {
+              await supabase.auth.resend({
+                type: "signup",
+                email: submittedEmail,
+              });
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--gold)",
+              cursor: "pointer",
+              fontSize: 12,
+              fontFamily: "inherit",
+              padding: 0,
+            }}
+          >
+            resend the email
+          </button>
+          .
+        </div>
       </div>
+    );
+  }
 
-      {/* Form card */}
+  // ─── Main registration form ─────────────────────────────────────────────────
+  return (
+    <div>
+      <SelectedPlanBadge plan={plan} />
+
       <div
         style={{
           background: "var(--surface)",
@@ -201,29 +375,95 @@ function RegisterForm() {
           padding: "32px",
         }}
       >
-        <h1
+        <div style={{ marginBottom: 28 }}>
+          <h1
+            style={{
+              fontSize: 22,
+              fontWeight: 500,
+              color: "var(--text-primary)",
+              marginBottom: 6,
+              letterSpacing: "0.02em",
+            }}
+          >
+            Create your account
+          </h1>
+          <p
+            style={{
+              fontSize: 13,
+              color: "var(--text-secondary)",
+              lineHeight: 1.6,
+            }}
+          >
+            {plan === "starter"
+              ? "Free forever — no credit card required."
+              : "Start your 14-day free trial. Cancel anytime."}
+          </p>
+        </div>
+
+        {/* Progress indicator */}
+        <div
           style={{
-            fontSize: 22,
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            marginBottom: 6,
-            letterSpacing: "0.02em",
-          }}
-        >
-          Create your account
-        </h1>
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--text-secondary)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
             marginBottom: 28,
-            lineHeight: 1.6,
+            padding: "10px 14px",
+            background: "var(--surface-2)",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
           }}
         >
-          {planParam === "starter"
-            ? "Free forever — no credit card required."
-            : "Start your 14-day free trial. Cancel anytime."}
-        </p>
+          {["Account", "Profile", "Plan"].map((s, i) => (
+            <div
+              key={s}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flex: i < 2 ? 1 : undefined,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    background: i === 0 ? "var(--gold)" : "var(--surface-3)",
+                    border: `1px solid ${i === 0 ? "var(--gold)" : "var(--border)"}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 10,
+                    color: i === 0 ? "#0D0E11" : "var(--text-dim)",
+                    fontWeight: 500,
+                  }}
+                >
+                  {i + 1}
+                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: i === 0 ? "var(--text-primary)" : "var(--text-dim)",
+                    fontFamily: "DM Mono, monospace",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {s.toUpperCase()}
+                </span>
+              </div>
+              {i < 2 && (
+                <div
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    background: "var(--border)",
+                  }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
 
         {serverError && (
           <div
@@ -245,6 +485,17 @@ function RegisterForm() {
           onSubmit={handleSubmit(onSubmit)}
           style={{ display: "flex", flexDirection: "column", gap: 18 }}
         >
+          {/* Full name */}
+          <Input
+            label='Full name'
+            type='text'
+            placeholder='Omar Jandali'
+            error={errors.full_name?.message}
+            autoComplete='name'
+            {...register("full_name")}
+          />
+
+          {/* Email */}
           <Input
             label='Email address'
             type='email'
@@ -253,22 +504,39 @@ function RegisterForm() {
             autoComplete='email'
             {...register("email")}
           />
+
+          {/* Phone */}
           <Input
-            label='Password'
-            type='password'
-            placeholder='Min. 8 characters'
-            error={errors.password?.message}
-            hint='At least 8 characters, one uppercase, one number'
-            autoComplete='new-password'
-            {...register("password")}
+            label='Phone number'
+            type='tel'
+            placeholder='+1 (555) 000-0000'
+            error={errors.phone?.message}
+            hint='Optional — used for grading update alerts'
+            autoComplete='tel'
+            {...register("phone")}
           />
+
+          {/* Password */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            <Input
+              label='Password'
+              type='password'
+              placeholder='Min. 8 characters'
+              error={errors.password?.message}
+              autoComplete='new-password'
+              {...register("password")}
+            />
+            <PasswordStrength password={password} />
+          </div>
+
+          {/* Confirm password */}
           <Input
             label='Confirm password'
             type='password'
             placeholder='Re-enter your password'
-            error={errors.confirmPassword?.message}
+            error={errors.confirm_password?.message}
             autoComplete='new-password'
-            {...register("confirmPassword")}
+            {...register("confirm_password")}
           />
 
           <Button
@@ -279,9 +547,7 @@ function RegisterForm() {
             fullWidth
             style={{ marginTop: 4 }}
           >
-            {planParam === "starter"
-              ? "Create free account"
-              : `Start ${plan.name} trial`}
+            Create account — continue to profile
           </Button>
         </form>
 
@@ -335,7 +601,13 @@ export default function RegisterPage() {
   return (
     <Suspense
       fallback={
-        <div style={{ color: "var(--text-secondary)", textAlign: "center" }}>
+        <div
+          style={{
+            color: "var(--text-secondary)",
+            textAlign: "center",
+            padding: 40,
+          }}
+        >
           Loading...
         </div>
       }
