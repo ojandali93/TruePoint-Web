@@ -1,18 +1,39 @@
 "use client";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "../../hooks/useAuth";
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { createClient } from "../../lib/supabase";
 import { ROUTES } from "../../constants/routes";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { profile, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
 
   useEffect(() => {
-    if (!isLoading && !profile) {
-      router.replace(ROUTES.LOGIN);
-    }
-  }, [profile, isLoading]);
+    const checkSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        router.replace(ROUTES.HOME);
+      } else {
+        setIsLoading(false);
+      }
+    };
+
+    checkSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        router.replace(ROUTES.HOME);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [pathname]);
 
   if (isLoading) {
     return (
@@ -51,8 +72,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!profile) return null;
-
   return (
     <div
       style={{
@@ -61,7 +80,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         background: "var(--charcoal)",
       }}
     >
-      {/* Sidebar placeholder — will be built as Sidebar component */}
       <aside
         style={{
           width: 240,

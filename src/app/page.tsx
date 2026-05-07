@@ -1,5 +1,10 @@
+"use client";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { createClient } from "../lib/supabase";
+import { ROUTES } from "../constants/routes";
+import { useEffect } from "react";
 
 const TICKER_ITEMS = [
   {
@@ -324,6 +329,17 @@ const METRICS = [
 ];
 
 export default function LandingPage() {
+  const router = useRouter();
+  const supabase = createClient();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.replace(ROUTES.DASHBOARD);
+      }
+    });
+  }, [router, supabase]);
+
   return (
     <>
       <div className='grain-overlay' />

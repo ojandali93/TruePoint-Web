@@ -231,28 +231,21 @@ function RegisterForm() {
       const session = authData.session;
 
       if (session) {
-        // Email confirmation is off — session available immediately
-        try {
-          await api.post("/users/me", {
-            full_name: data.full_name,
-            currency: "USD",
-            preferred_grading_company: "PSA",
-          });
-
-          // Save phone separately if provided
-          if (data.phone) {
-            await supabase.auth.updateUser({ phone: data.phone });
+        // Save phone to Supabase auth metadata if provided
+        if (data.phone) {
+          try {
+            await supabase.auth.updateUser({
+              data: { full_name: data.full_name, phone: data.phone },
+            });
+          } catch (err) {
+            console.error("Failed to save phone:", err);
           }
-        } catch (profileErr: unknown) {
-          // Profile creation failed — log but don't block the flow
-          // The user can complete profile in onboarding
-          const message =
-            profileErr instanceof Error ? profileErr.message : "Unknown error";
-          console.error("Profile creation error:", message);
         }
 
-        // Go to collector profile step (Step 2 of onboarding)
-        router.push(`/onboarding?plan=${plan}&step=collector`);
+        // Save full_name to auth metadata so onboarding can read it later
+        // Profile row is created via upsert in onboarding step 1 — not here
+        // This avoids the username validation requirement on POST /users/me
+        router.push(`/onboarding?plan=${plan}`);
       } else {
         // Email confirmation is on — user needs to verify before we can create profile
         setSubmittedEmail(data.email);

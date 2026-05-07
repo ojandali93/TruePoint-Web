@@ -1,8 +1,26 @@
+"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { createClient } from "../../lib/supabase";
+import { ROUTES } from "../../constants/routes";
+
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const supabase = createClient();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.replace(ROUTES.DASHBOARD);
+      }
+    });
+  }, []);
+
   return (
     <div
       style={{
@@ -15,54 +33,22 @@ export default function AuthLayout({
       }}
     >
       <div style={{ width: "100%", maxWidth: 440 }}>
-        {/* Logo */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 10,
             justifyContent: "center",
             marginBottom: 40,
           }}
         >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "var(--gold)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <span
-              style={{
-                color: "#0D0E11",
-                fontSize: 13,
-                fontWeight: 700,
-                fontFamily: "DM Mono, monospace",
-              }}
-            >
-              TP
-            </span>
-          </div>
-          <span
-            className='font-display'
-            style={{ fontSize: 22, letterSpacing: "0.08em" }}
-          >
-            TRUEPOINT
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--gold)",
-              letterSpacing: "0.12em",
-              fontFamily: "DM Mono, monospace",
-            }}
-          >
-            TCG
-          </span>
+          <Image
+            src='/tp-logo-gold-white.png'
+            alt='TruePoint TCG'
+            height={40}
+            width={180}
+            style={{ objectFit: "contain" }}
+            priority
+          />
         </div>
         {children}
       </div>
