@@ -45,3 +45,16 @@ export interface CenteringAnalysis {
   truepointScore: number;
   grades: CenteringReport["grades"];
 }
+
+export interface CenteringInput {
+  cardId?: string | null;
+  inventoryItemId?: string | null;
+  side: "front" | "back";
+  imageWidth: number;
+  imageHeight: number;
+  dpi: number;
+  rotation: number;
+  borders: BorderPositions;
+  label?: string | null; // ← make sure this exists
+  imageUrl?: string | null; // ← add this
+}

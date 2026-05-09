@@ -1,760 +1,204 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { useState, use } from "react";
-import Image from "next/image";
+import { useState, use, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useCardDetail } from "../../../../../hooks/useCards";
-import type { PriceEntry } from "../../../../../hooks/useCards";
+import api from "../../../../../lib/api";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const fmt = (val: number | null, currency = "USD") =>
-  val != null
-    ? new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
-        val,
-      )
-    : "—";
+interface CardVariant {
+  variantType: string;
+  label: string;
+  color: string;
+  sortOrder: number;
+}
 
-const profitPct = (graded: number, raw: number, cost: number): number =>
-  Math.round(((graded - raw - cost) / (raw + cost)) * 100);
+type GradingTab = "psa" | "bgs" | "cgc" | "sgc" | "tag";
+type PageTab = "grading" | "prices";
 
-const getMarketPrice = (
-  prices: PriceEntry[],
-  source: string,
-  variant?: string | null,
-  grade?: string | null,
-): number | null => {
-  const match = prices.find(
-    (p) =>
-      p.source === source &&
-      (variant === undefined || p.variant === variant) &&
-      (grade === undefined || p.grade === grade),
-  );
-  return match?.marketPrice ?? null;
+const COMPANY_COLORS: Record<string, string> = {
+  psa: "#C9A84C",
+  bgs: "#378ADD",
+  cgc: "#3DAA6E",
+  sgc: "#7F77DD",
+  tag: "#D85A30",
 };
 
-// ─── Grading Analysis ─────────────────────────────────────────────────────────
+const RARITY_COLORS: Record<string, string> = {
+  "Special Illustration Rare": "#C9A84C",
+  "Hyper Rare": "#A78BFA",
+  "Illustration Rare": "#8A8FA0",
+  "Ultra Rare": "#378ADD",
+  "Double Rare": "#64748B",
+};
 
-function GradingAnalysis({
-  rawPrice,
-  cardmarketPrices,
-}: {
-  rawPrice: number | null;
-  cardmarketPrices: PriceEntry[];
-}) {
-  const [gradingCost, setGradingCost] = useState(24.99);
+const fmt = (v: number | null | undefined) =>
+  v != null ? `$${v.toFixed(2)}` : "—";
 
-  // Pop count state for each grade
-  const [popCounts, setPopCounts] = useState<Record<string, string>>({});
-  const setPop = (key: string, val: string) =>
-    setPopCounts((prev) => ({ ...prev, [key]: val }));
+const fmtGain = (v: number | null | undefined) =>
+  v != null ? `${v >= 0 ? "+" : ""}$${Math.abs(v).toFixed(2)}` : "—";
 
-  const raw = rawPrice ?? 0;
+const gainColor = (v: number | null | undefined) =>
+  v == null ? "var(--text-dim)" : v >= 0 ? "#3DAA6E" : "#C94C4C";
 
-  const fmt = (val: number | null) =>
-    val != null
-      ? new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-        }).format(val)
-      : "—";
+// ─── Grade configs ─────────────────────────────────────────────────────────
 
-  const roi = (graded: number | null): number | null => {
-    if (!graded || !raw) return null;
-    return Math.round(
-      ((graded - raw - gradingCost) / (raw + gradingCost)) * 100,
-    );
-  };
+const GRADING_GRADES: Record<GradingTab, { grade: string; label: string }[]> = {
+  psa: [
+    { grade: "10", label: "PSA 10 Gem Mint" },
+    { grade: "9", label: "PSA 9 Mint" },
+  ],
+  bgs: [
+    { grade: "Black Label", label: "BGS Black Label" },
+    { grade: "10", label: "BGS 10 Pristine" },
+    { grade: "9.5", label: "BGS 9.5 Gem Mint" },
+  ],
+  cgc: [
+    { grade: "Pristine 10", label: "CGC Pristine 10" },
+    { grade: "10", label: "CGC 10" },
+    { grade: "9.5", label: "CGC 9.5" },
+  ],
+  sgc: [
+    { grade: "10", label: "SGC 10 Gem Mint" },
+    { grade: "9.5", label: "SGC 9.5" },
+  ],
+  tag: [
+    { grade: "Pristine 10", label: "TAG Pristine 10" },
+    { grade: "10", label: "TAG 10 Gem Mint" },
+  ],
+};
 
-  const netProfit = (graded: number | null): number | null => {
-    if (!graded || !raw) return null;
-    return graded - raw - gradingCost;
-  };
+// ─── Variant badge ────────────────────────────────────────────────────────────
 
-  const getPrice = (grade: string): number | null =>
-    cardmarketPrices.find((p) => p.grade === grade)?.marketPrice ?? null;
-
-  // All grade rows grouped by company
-  const COMPANIES = [
-    {
-      name: "PSA",
-      color: "#C9A84C",
-      grades: [
-        { key: "PSA 10", label: "PSA 10 — Gem Mint", showPop: true },
-        { key: "PSA 9", label: "PSA 9 — Mint", showPop: true },
-      ],
-    },
-    {
-      name: "BGS",
-      color: "#378ADD",
-      grades: [
-        {
-          key: "BGS Black Label",
-          label: "BGS Black Label — Pristine 10",
-          showPop: true,
-        },
-        { key: "BGS 10", label: "BGS 10 — Pristine", showPop: false },
-        { key: "BGS 9.5", label: "BGS 9.5 — Gem Mint", showPop: false },
-      ],
-    },
-    {
-      name: "TAG",
-      color: "#D85A30",
-      grades: [
-        { key: "TAG 10", label: "TAG 10 — Gem Mint", showPop: true },
-        { key: "TAG 9", label: "TAG 9 — Mint", showPop: false },
-      ],
-    },
-    {
-      name: "CGC",
-      color: "#3DAA6E",
-      grades: [
-        { key: "CGC 10", label: "CGC 10 — Pristine", showPop: true },
-        { key: "CGC 9", label: "CGC 9 — Mint", showPop: false },
-      ],
-    },
-  ];
-
-  const hasAnyData = COMPANIES.some((c) =>
-    c.grades.some((g) => getPrice(g.key) != null),
+function VariantBadge({ variant }: { variant: CardVariant }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "5px 10px",
+        borderRadius: 20,
+        border: `1px solid ${variant.color}44`,
+        background: `${variant.color}12`,
+      }}
+    >
+      <div
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: "50%",
+          background: variant.color,
+          boxShadow: `0 0 4px ${variant.color}88`,
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          fontSize: 11,
+          color: variant.color,
+          fontFamily: "DM Mono, monospace",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {variant.label}
+      </span>
+    </div>
   );
+}
+
+// ─── Grading ROI row ──────────────────────────────────────────────────────────
+
+function GradeRow({
+  label,
+  gradedPrice,
+  rawPrice,
+  gradingCost,
+  color,
+}: {
+  label: string;
+  gradedPrice: number | null;
+  rawPrice: number | null;
+  gradingCost: number;
+  color: string;
+}) {
+  const roi =
+    gradedPrice != null && rawPrice != null
+      ? gradedPrice - rawPrice - gradingCost
+      : null;
+  const roiPct =
+    roi != null && (rawPrice ?? 0) + gradingCost > 0
+      ? (roi / ((rawPrice ?? 0) + gradingCost)) * 100
+      : null;
 
   return (
     <div
       style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 12,
-        overflow: "hidden",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "10px 0",
+        borderBottom: "1px solid var(--border)",
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          padding: "20px 24px",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div
+          style={{ width: 3, height: 28, borderRadius: 2, background: color }}
+        />
         <div>
           <div
             style={{
-              fontSize: 11,
-              color: "var(--gold)",
-              letterSpacing: "0.1em",
-              fontFamily: "DM Mono, monospace",
-              marginBottom: 4,
-            }}
-          >
-            GRADING ANALYSIS
-          </div>
-          <div
-            style={{
-              fontSize: 16,
+              fontSize: 12,
               fontWeight: 500,
               color: "var(--text-primary)",
             }}
           >
-            Is it worth grading?
+            {label}
           </div>
-        </div>
-
-        {/* Grading cost */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            alignItems: "flex-end",
-          }}
-        >
-          <label
-            style={{
-              fontSize: 10,
-              color: "var(--text-dim)",
-              letterSpacing: "0.06em",
-              fontFamily: "DM Mono, monospace",
-            }}
-          >
-            GRADING COST
-          </label>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-              $
-            </span>
-            <input
-              type='number'
-              value={gradingCost}
-              onChange={(e) => setGradingCost(parseFloat(e.target.value) || 0)}
+          {gradedPrice != null && (
+            <div
               style={{
-                width: 72,
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                padding: "5px 8px",
-                fontSize: 13,
-                color: "var(--text-primary)",
+                fontSize: 10,
+                color: "var(--text-dim)",
                 fontFamily: "DM Mono, monospace",
-                outline: "none",
-                textAlign: "right",
               }}
-            />
-          </div>
-          <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
-            Total in: {fmt(raw + gradingCost)}
-          </span>
+            >
+              Graded: {fmt(gradedPrice)}
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Raw value bar */}
-      <div
-        style={{
-          padding: "16px 24px",
-          borderBottom: "1px solid var(--border)",
-          background: "rgba(201,168,76,0.06)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 10,
-              color: "var(--text-dim)",
-              letterSpacing: "0.08em",
-              fontFamily: "DM Mono, monospace",
-              marginBottom: 4,
-            }}
-          >
-            RAW VALUE
-          </div>
-          <div
-            style={{
-              fontSize: 28,
-              fontWeight: 500,
-              color: "var(--text-primary)",
-              fontFamily: "DM Mono, monospace",
-            }}
-          >
-            {fmt(rawPrice)}
-          </div>
-        </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--text-dim)",
-            textAlign: "right",
-            lineHeight: 1.8,
-          }}
-        >
-          <div>TCGPlayer market price</div>
-          <div>Grading cost: {fmt(gradingCost)}</div>
-        </div>
-      </div>
-
-      {!hasAnyData ? (
-        <div
-          style={{
-            padding: "40px 24px",
-            textAlign: "center",
-            color: "var(--text-dim)",
-            fontSize: 13,
-          }}
-        >
-          Graded price data not available for this card yet.
-        </div>
-      ) : (
-        <>
-          {/* Column headers */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "220px 1fr 1fr 1fr 1fr",
-              gap: 12,
-              padding: "10px 24px",
-              borderBottom: "1px solid var(--border)",
-              background: "var(--surface-2)",
-            }}
-          >
-            {["GRADE", "GRADED VALUE", "NET PROFIT", "ROI", "POP COUNT"].map(
-              (h) => (
-                <div
-                  key={h}
-                  style={{
-                    fontSize: 10,
-                    color: "var(--text-dim)",
-                    letterSpacing: "0.08em",
-                    fontFamily: "DM Mono, monospace",
-                  }}
-                >
-                  {h}
-                </div>
-              ),
+      <div style={{ textAlign: "right" }}>
+        {roi != null ? (
+          <>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: gainColor(roi),
+                fontFamily: "DM Mono, monospace",
+              }}
+            >
+              {fmtGain(roi)}
+            </div>
+            {roiPct != null && (
+              <div style={{ fontSize: 10, color: gainColor(roiPct) }}>
+                {roiPct >= 0 ? "+" : ""}
+                {roiPct.toFixed(1)}% ROI
+              </div>
             )}
-          </div>
-
-          {/* Company sections */}
-          {COMPANIES.map((company) => {
-            const visibleGrades = company.grades.filter(
-              (g) => getPrice(g.key) != null,
-            );
-            if (visibleGrades.length === 0) return null;
-
-            return (
-              <div
-                key={company.name}
-                style={{ borderBottom: "1px solid var(--border)" }}
-              >
-                {/* Company header */}
-                <div
-                  style={{
-                    padding: "10px 24px",
-                    background: `${company.color}0D`,
-                    borderBottom: "1px solid var(--border)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: company.color,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: company.color,
-                      letterSpacing: "0.1em",
-                      fontFamily: "DM Mono, monospace",
-                    }}
-                  >
-                    {company.name}
-                  </span>
-                </div>
-
-                {/* Grade rows */}
-                {company.grades.map((g) => {
-                  const price = getPrice(g.key);
-                  if (price == null) return null;
-
-                  const roiVal = roi(price);
-                  const profit = netProfit(price);
-                  const isWorth = roiVal != null && roiVal > 0;
-                  const isBlackLabel = g.key === "BGS Black Label";
-
-                  return (
-                    <div
-                      key={g.key}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "220px 1fr 1fr 1fr 1fr",
-                        gap: 12,
-                        padding: "16px 24px",
-                        borderBottom: "1px solid var(--border)",
-                        alignItems: "center",
-                        background: isBlackLabel
-                          ? "rgba(55,138,221,0.05)"
-                          : "transparent",
-                      }}
-                    >
-                      {/* Grade label */}
-                      <div>
-                        <div
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            fontSize: 12,
-                            fontWeight: 500,
-                            color: isBlackLabel ? "#fff" : company.color,
-                            background: isBlackLabel
-                              ? "linear-gradient(135deg, #1a1a1a, #333)"
-                              : `${company.color}18`,
-                            border: isBlackLabel
-                              ? "1px solid rgba(255,255,255,0.2)"
-                              : `1px solid ${company.color}33`,
-                            padding: "4px 10px",
-                            borderRadius: 20,
-                            fontFamily: "DM Mono, monospace",
-                            marginBottom: 4,
-                          }}
-                        >
-                          {isBlackLabel && (
-                            <span style={{ fontSize: 10 }}>◼</span>
-                          )}
-                          {g.label}
-                        </div>
-                      </div>
-
-                      {/* Graded value */}
-                      <div
-                        style={{
-                          fontSize: 20,
-                          fontWeight: 500,
-                          color: "var(--text-primary)",
-                          fontFamily: "DM Mono, monospace",
-                        }}
-                      >
-                        {fmt(price)}
-                      </div>
-
-                      {/* Net profit */}
-                      <div
-                        style={{
-                          fontSize: 18,
-                          fontWeight: 500,
-                          color: isWorth ? "#3DAA6E" : "#C94C4C",
-                          fontFamily: "DM Mono, monospace",
-                        }}
-                      >
-                        {profit != null
-                          ? `${profit >= 0 ? "+" : ""}${fmt(profit)}`
-                          : "—"}
-                      </div>
-
-                      {/* ROI */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 22,
-                            fontWeight: 700,
-                            color: isWorth ? "#3DAA6E" : "#C94C4C",
-                            fontFamily: "DM Mono, monospace",
-                          }}
-                        >
-                          {roiVal != null
-                            ? `${roiVal >= 0 ? "+" : ""}${roiVal}%`
-                            : "—"}
-                        </span>
-                        {roiVal != null && (
-                          <span
-                            style={{
-                              fontSize: 9,
-                              padding: "3px 7px",
-                              borderRadius: 20,
-                              background: isWorth
-                                ? "rgba(61,170,110,0.15)"
-                                : "rgba(201,76,76,0.15)",
-                              color: isWorth ? "#3DAA6E" : "#C94C4C",
-                              fontFamily: "DM Mono, monospace",
-                              letterSpacing: "0.06em",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {isWorth ? "✓ WORTH IT" : "✗ SKIP"}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Pop count */}
-                      <div>
-                        {g.showPop ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                            }}
-                          >
-                            <input
-                              type='number'
-                              value={popCounts[g.key] ?? ""}
-                              onChange={(e) => setPop(g.key, e.target.value)}
-                              placeholder='—'
-                              style={{
-                                width: 72,
-                                background: "var(--surface-2)",
-                                border: "1px solid var(--border)",
-                                borderRadius: 6,
-                                padding: "5px 8px",
-                                fontSize: 12,
-                                color: "var(--text-primary)",
-                                fontFamily: "DM Mono, monospace",
-                                outline: "none",
-                                textAlign: "center",
-                              }}
-                            />
-                            {popCounts[g.key] && (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  color:
-                                    parseInt(popCounts[g.key]) < 100
-                                      ? "#3DAA6E"
-                                      : parseInt(popCounts[g.key]) < 500
-                                        ? "#C9A84C"
-                                        : "#C94C4C",
-                                  fontFamily: "DM Mono, monospace",
-                                }}
-                              >
-                                {parseInt(popCounts[g.key]) < 100
-                                  ? "LOW POP"
-                                  : parseInt(popCounts[g.key]) < 500
-                                    ? "MED POP"
-                                    : "HIGH POP"}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span
-                            style={{ fontSize: 11, color: "var(--text-dim)" }}
-                          >
-                            —
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-
-          {/* Footer note */}
-          <div
-            style={{
-              padding: "12px 24px",
-              fontSize: 11,
-              color: "var(--text-dim)",
-              lineHeight: 1.7,
-              background: "var(--surface-2)",
-            }}
-          >
-            <span style={{ color: "var(--gold)" }}>◼ BGS Black Label</span> is
-            the rarest Beckett grade — requires a perfect 10 across all four
-            subgrades. Population is typically single digits for most cards. ·{" "}
-            Pop count data is manual input — PSA, BGS, and TAG population APIs
-            coming in a future update. · Prices sourced from CardMarket graded
-            sales data.
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─── Price table ──────────────────────────────────────────────────────────────
-
-function PriceTable({ prices }: { prices: PriceEntry[] }) {
-  const sourceLabels: Record<string, string> = {
-    tcgplayer: "TCGPlayer",
-    cardmarket: "CardMarket",
-    justtcg: "JustTCG",
-    ebay: "eBay Sold",
-  };
-
-  const sourceColors: Record<string, string> = {
-    tcgplayer: "#378ADD",
-    cardmarket: "#3DAA6E",
-    justtcg: "#C9A84C",
-    ebay: "#D85A30",
-  };
-
-  // Group by source, show raw prices only in this table
-  const rawPrices = prices.filter((p) => !p.grade);
-  const gradedPrices = prices.filter((p) => p.grade);
-
-  if (rawPrices.length === 0 && gradedPrices.length === 0) {
-    return (
-      <div
-        style={{
-          padding: "24px",
-          textAlign: "center",
-          color: "var(--text-dim)",
-          fontSize: 13,
-        }}
-      >
-        No pricing data available yet.
+          </>
+        ) : (
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>No data</div>
+        )}
       </div>
-    );
-  }
-
-  return (
-    <div>
-      {/* Raw prices */}
-      {rawPrices.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--text-dim)",
-              letterSpacing: "0.08em",
-              marginBottom: 12,
-              fontFamily: "DM Mono, monospace",
-            }}
-          >
-            RAW PRICES
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {rawPrices.map((p, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "140px 1fr 1fr 1fr 1fr",
-                  gap: 16,
-                  padding: "12px 16px",
-                  background: "var(--surface-2)",
-                  borderRadius:
-                    i === 0
-                      ? "8px 8px 0 0"
-                      : i === rawPrices.length - 1
-                        ? "0 0 8px 8px"
-                        : 0,
-                  border: "1px solid var(--border)",
-                  borderTop: i > 0 ? "none" : "1px solid var(--border)",
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: sourceColors[p.source] ?? "#8A8FA0",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    style={{ fontSize: 12, color: "var(--text-secondary)" }}
-                  >
-                    {sourceLabels[p.source] ?? p.source}
-                  </span>
-                  {p.variant && (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-dim)",
-                        fontFamily: "DM Mono, monospace",
-                      }}
-                    >
-                      {p.variant}
-                    </span>
-                  )}
-                </div>
-                {[
-                  { label: "LOW", val: p.lowPrice },
-                  { label: "MID", val: p.midPrice },
-                  { label: "HIGH", val: p.highPrice },
-                  { label: "MARKET", val: p.marketPrice },
-                ].map(({ label, val }) => (
-                  <div key={label}>
-                    <div
-                      style={{
-                        fontSize: 9,
-                        color: "var(--text-dim)",
-                        letterSpacing: "0.06em",
-                        marginBottom: 2,
-                      }}
-                    >
-                      {label}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: label === "MARKET" ? 500 : 400,
-                        color:
-                          label === "MARKET"
-                            ? "var(--text-primary)"
-                            : "var(--text-secondary)",
-                        fontFamily: "DM Mono, monospace",
-                      }}
-                    >
-                      {fmt(val)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Graded prices */}
-      {gradedPrices.length > 0 && (
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--text-dim)",
-              letterSpacing: "0.08em",
-              marginBottom: 12,
-              fontFamily: "DM Mono, monospace",
-            }}
-          >
-            GRADED PRICES
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {gradedPrices.map((p, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "140px 1fr",
-                  gap: 16,
-                  padding: "10px 16px",
-                  background: "var(--surface-2)",
-                  borderRadius:
-                    i === 0
-                      ? "8px 8px 0 0"
-                      : i === gradedPrices.length - 1
-                        ? "0 0 8px 8px"
-                        : 0,
-                  border: "1px solid var(--border)",
-                  borderTop: i > 0 ? "none" : "1px solid var(--border)",
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: sourceColors[p.source] ?? "#8A8FA0",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    style={{ fontSize: 12, color: "var(--text-secondary)" }}
-                  >
-                    {p.grade}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 500,
-                    color: "var(--gold-light)",
-                    fontFamily: "DM Mono, monospace",
-                  }}
-                >
-                  {fmt(p.marketPrice)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-// ─── Main card detail page ────────────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function CardDetailPage({
   params,
@@ -763,14 +207,47 @@ export default function CardDetailPage({
 }) {
   const { setId, cardId } = use(params);
   const { card, prices, loading, error } = useCardDetail(cardId);
-  const [activeTab, setActiveTab] = useState<"prices" | "grading">("grading");
-  const [imageFlipped, setImageFlipped] = useState(false);
 
-  if (loading) {
+  const [pageTab, setPageTab] = useState<PageTab>("grading");
+  const [gradingTab, setGradingTab] = useState<GradingTab>("psa");
+  const [gradingCost, setGradingCost] = useState(24.99);
+  const [variants, setVariants] = useState<CardVariant[]>([]);
+  const [variantStatus, setVariantStatus] = useState<
+    "loading" | "ready" | "pending" | "none"
+  >("loading");
+
+  // Load card variants
+  useEffect(() => {
+    if (!setId) return;
+    api
+      .get<{ data: any[] }>(`/variants/sets/${setId}/cards`)
+      .then((res) => {
+        const cardData = (res.data.data ?? []).find(
+          (c: any) => c.id === cardId,
+        );
+        if (cardData?.variants?.length) {
+          setVariants(cardData.variants);
+          setVariantStatus("ready");
+        } else {
+          // Check set status
+          api
+            .get<{ data: { status: string } }>(`/variants/sets/${setId}/status`)
+            .then((statusRes) => {
+              setVariantStatus(
+                statusRes.data.data.status === "ready" ? "none" : "pending",
+              );
+            })
+            .catch(() => setVariantStatus("none"));
+        }
+      })
+      .catch(() => setVariantStatus("none"));
+  }, [setId, cardId]);
+
+  if (loading)
     return (
       <div
         style={{
-          padding: 80,
+          padding: "60px 40px",
           textAlign: "center",
           color: "var(--text-dim)",
           fontSize: 13,
@@ -779,13 +256,12 @@ export default function CardDetailPage({
         Loading card...
       </div>
     );
-  }
 
-  if (error || !card) {
+  if (error || !card)
     return (
       <div
         style={{
-          padding: 80,
+          padding: "60px 40px",
           textAlign: "center",
           color: "var(--red)",
           fontSize: 13,
@@ -794,29 +270,27 @@ export default function CardDetailPage({
         {error ?? "Card not found"}
       </div>
     );
-  }
 
-  const allPrices = [
-    ...(prices?.tcgplayer ?? []),
-    ...(prices?.cardmarket ?? []),
-    ...(prices?.justtcg ?? []),
-    ...(prices?.ebay ?? []),
-  ];
-
+  const rawEntry = prices?.tcgplayer?.find((p) => !p.grade);
   const rawPrice =
-    prices?.tcgplayer?.find(
-      (p) => !p.grade && (p.variant === "holofoil" || p.variant === "normal"),
-    )?.marketPrice ??
+    rawEntry?.prices?.market ??
+    rawEntry?.marketPrice ??
+    prices?.tcgplayer?.[0]?.prices?.market ??
     prices?.tcgplayer?.[0]?.marketPrice ??
     null;
 
-  const tabs = [
-    { key: "grading", label: "Grading Analysis" },
-    { key: "prices", label: "All Prices" },
-  ] as const;
+  // Get graded prices for current company
+  const getGradedPrice = (company: string, grade: string): number | null => {
+    const gradeKey = grade.toLowerCase().replace(/\s+/g, "_");
+    return (
+      prices?.tcgplayer?.find(
+        (p) => p.grade?.toLowerCase().replace(/\s+/g, "_") === gradeKey,
+      )?.prices?.market ?? null
+    );
+  };
 
   return (
-    <div style={{ padding: "32px 40px", maxWidth: 1200, margin: "0 auto" }}>
+    <div style={{ padding: "28px 36px", maxWidth: 1200, margin: "0 auto" }}>
       {/* Breadcrumb */}
       <div
         style={{
@@ -839,7 +313,7 @@ export default function CardDetailPage({
           href={`/cards/${setId}`}
           style={{ color: "var(--text-dim)", textDecoration: "none" }}
         >
-          {card.set.name}
+          {card.set?.name ?? setId}
         </Link>
         <span>›</span>
         <span style={{ color: "var(--text-secondary)" }}>{card.name}</span>
@@ -848,231 +322,736 @@ export default function CardDetailPage({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "280px 1fr",
+          gridTemplateColumns: "300px 1fr",
           gap: 32,
           alignItems: "start",
         }}
       >
-        {/* Card image */}
+        {/* ── Left column ── */}
         <div>
+          {/* Card image */}
           <div
             style={{
-              position: "relative",
-              cursor: "pointer",
-              borderRadius: 12,
-              overflow: "hidden",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
-              transition: "transform 0.3s ease",
-            }}
-            onClick={() => setImageFlipped(!imageFlipped)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "scale(1.02)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-            }}
-          >
-            <Image
-              src={card.images.large}
-              alt={card.name}
-              width={280}
-              height={392}
-              style={{ width: "100%", height: "auto", display: "block" }}
-              priority
-            />
-          </div>
-
-          {/* Card meta */}
-          <div
-            style={{
-              marginTop: 16,
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: 16,
+              borderRadius: 14,
+              overflow: "hidden",
+              marginBottom: 16,
+            }}
+          >
+            {card.images?.large ? (
+              <Image
+                src={card.images.large}
+                alt={card.name}
+                width={300}
+                height={420}
+                style={{ width: "100%", height: "auto", display: "block" }}
+              />
+            ) : (
+              <div
+                style={{
+                  height: 420,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--text-dim)",
+                  fontSize: 13,
+                }}
+              >
+                No image
+              </div>
+            )}
+          </div>
+
+          {/* Card metadata */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              overflow: "hidden",
+              marginBottom: 16,
             }}
           >
             {[
               { label: "Number", value: `#${card.number}` },
-              { label: "Rarity", value: card.rarity ?? "—" },
-              { label: "Type", value: card.types?.join(", ") ?? "—" },
-              { label: "HP", value: card.hp ?? "—" },
-              { label: "Supertype", value: card.supertype ?? "—" },
-              { label: "Subtypes", value: card.subtypes?.join(", ") ?? "—" },
-            ].map((row) => (
-              <div
-                key={row.label}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: "7px 0",
-                  borderBottom: "1px solid var(--border)",
-                  fontSize: 12,
-                }}
-              >
-                <span style={{ color: "var(--text-dim)" }}>{row.label}</span>
-                <span
+              { label: "Rarity", value: card.rarity },
+              { label: "Type", value: card.types?.join(", ") },
+              { label: "HP", value: card.hp },
+              { label: "Supertype", value: card.supertype },
+              { label: "Subtypes", value: card.subtypes?.join(", ") },
+            ]
+              .filter((r) => r.value)
+              .map((row, i, arr) => (
+                <div
+                  key={row.label}
                   style={{
-                    color: "var(--text-secondary)",
-                    fontFamily:
-                      row.label === "Number" ? "DM Mono, monospace" : "inherit",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 16px",
+                    borderBottom:
+                      i < arr.length - 1 ? "1px solid var(--border)" : "none",
                   }}
                 >
-                  {row.value}
-                </span>
-              </div>
-            ))}
+                  <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    {row.label}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color:
+                        row.label === "Rarity"
+                          ? (RARITY_COLORS[row.value!] ??
+                            "var(--text-secondary)")
+                          : "var(--text-secondary)",
+                      fontWeight: row.label === "Rarity" ? 500 : 400,
+                      textAlign: "right",
+                      maxWidth: 160,
+                    }}
+                  >
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+          </div>
+
+          {/* Variants section */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "10px 16px",
+                borderBottom: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                fontSize: 10,
+                color: "var(--text-dim)",
+                letterSpacing: "0.08em",
+                fontFamily: "DM Mono, monospace",
+              }}
+            >
+              VARIANTS
+            </div>
+            <div style={{ padding: "14px 16px" }}>
+              {variantStatus === "loading" && (
+                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                  Loading...
+                </div>
+              )}
+              {variantStatus === "pending" && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--text-secondary)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <span style={{ color: "var(--gold)" }}>⏳ </span>
+                  Variant data for this set is being prepared. Check back soon.
+                </div>
+              )}
+              {variantStatus === "none" && (
+                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                  No variant data available
+                </div>
+              )}
+              {variantStatus === "ready" && variants.length > 0 && (
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 8 }}
+                >
+                  {variants.map((v) => (
+                    <VariantBadge key={v.variantType} variant={v} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Right panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* Card title */}
-          <div>
+        {/* ── Right column ── */}
+        <div>
+          {/* Card header */}
+          <div style={{ marginBottom: 20 }}>
             <div
               style={{
                 fontSize: 11,
                 color: "var(--gold)",
                 letterSpacing: "0.1em",
                 fontFamily: "DM Mono, monospace",
-                marginBottom: 8,
+                marginBottom: 6,
               }}
             >
-              {card.set.name.toUpperCase()} · #{card.number}
+              {card.set?.name?.toUpperCase()} · #{card.number}
             </div>
             <h1
               style={{
                 fontSize: 32,
                 fontWeight: 500,
                 color: "var(--text-primary)",
-                marginBottom: 8,
-                letterSpacing: "0.02em",
+                marginBottom: 10,
               }}
             >
               {card.name}
             </h1>
             {card.rarity && (
-              <div
+              <span
                 style={{
                   display: "inline-block",
-                  fontSize: 11,
-                  padding: "3px 10px",
+                  fontSize: 12,
+                  padding: "4px 12px",
                   borderRadius: 20,
-                  background: "rgba(201,168,76,0.12)",
-                  color: "var(--gold)",
-                  border: "1px solid rgba(201,168,76,0.3)",
-                  fontFamily: "DM Mono, monospace",
+                  border: `1px solid ${RARITY_COLORS[card.rarity] ?? "var(--border)"}44`,
+                  background: `${RARITY_COLORS[card.rarity] ?? "transparent"}11`,
+                  color: RARITY_COLORS[card.rarity] ?? "var(--text-secondary)",
                 }}
               >
                 {card.rarity}
-              </div>
+              </span>
             )}
           </div>
 
-          {/* Raw market price hero */}
-          {rawPrice && (
+          {/* Page tabs */}
+          <div
+            style={{
+              display: "flex",
+              gap: 0,
+              borderBottom: "1px solid var(--border)",
+              marginBottom: 24,
+            }}
+          >
+            {(
+              [
+                { key: "grading", label: "Grading Analysis" },
+                { key: "prices", label: "All Prices" },
+              ] as { key: PageTab; label: string }[]
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setPageTab(tab.key)}
+                style={{
+                  padding: "10px 24px",
+                  border: "none",
+                  borderBottom: `2px solid ${pageTab === tab.key ? "var(--gold)" : "transparent"}`,
+                  background: "transparent",
+                  color:
+                    pageTab === tab.key
+                      ? "var(--text-primary)"
+                      : "var(--text-dim)",
+                  fontSize: 13,
+                  fontWeight: pageTab === tab.key ? 500 : 400,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  marginBottom: -1,
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Grading Analysis tab ── */}
+          {pageTab === "grading" && (
             <div
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
-                borderRadius: 10,
-                padding: "20px 24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
+                borderRadius: 14,
+                overflow: "hidden",
               }}
             >
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--text-dim)",
-                    letterSpacing: "0.08em",
-                    marginBottom: 4,
-                  }}
-                >
-                  MARKET PRICE (RAW)
-                </div>
-                <div
-                  style={{
-                    fontSize: 32,
-                    fontWeight: 500,
-                    color: "var(--gold)",
-                    fontFamily: "DM Mono, monospace",
-                  }}
-                >
-                  {fmt(rawPrice)}
-                </div>
-              </div>
+              {/* Header with grading cost */}
               <div
                 style={{
-                  fontSize: 11,
-                  color: "var(--text-dim)",
-                  textAlign: "right",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "16px 24px",
+                  borderBottom: "1px solid var(--border)",
+                  background: "var(--surface-2)",
                 }}
               >
-                <div>TCGPlayer</div>
-                <div style={{ marginTop: 4, fontSize: 10 }}>Market price</div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--gold)",
+                      letterSpacing: "0.1em",
+                      fontFamily: "DM Mono, monospace",
+                      marginBottom: 4,
+                    }}
+                  >
+                    GRADING ANALYSIS
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    Is it worth grading?
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      marginBottom: 6,
+                    }}
+                  >
+                    GRADING COST
+                  </div>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <span
+                      style={{ fontSize: 13, color: "var(--text-secondary)" }}
+                    >
+                      $
+                    </span>
+                    <input
+                      type='number'
+                      min={0}
+                      step={0.01}
+                      value={gradingCost}
+                      onChange={(e) => setGradingCost(Number(e.target.value))}
+                      style={{
+                        width: 70,
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        padding: "5px 8px",
+                        fontSize: 13,
+                        color: "var(--text-primary)",
+                        fontFamily: "DM Mono, monospace",
+                        outline: "none",
+                        textAlign: "right",
+                      }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      marginTop: 4,
+                    }}
+                  >
+                    Total in: {fmt((rawPrice ?? 0) + gradingCost)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Raw value */}
+              <div
+                style={{
+                  padding: "14px 24px",
+                  borderBottom: "1px solid var(--border)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      letterSpacing: "0.08em",
+                      fontFamily: "DM Mono, monospace",
+                      marginBottom: 4,
+                    }}
+                  >
+                    RAW VALUE
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 20,
+                      fontWeight: 600,
+                      color: rawPrice
+                        ? "var(--text-primary)"
+                        : "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                    }}
+                  >
+                    {rawPrice ? fmt(rawPrice) : "—"}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    textAlign: "right",
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                  }}
+                >
+                  <div>TCGPlayer market price</div>
+                  <div>Grading cost: {fmt(gradingCost)}</div>
+                </div>
+              </div>
+
+              {/* Company tabs */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 0,
+                  borderBottom: "1px solid var(--border)",
+                  padding: "0 24px",
+                }}
+              >
+                {(Object.keys(GRADING_GRADES) as GradingTab[]).map((co) => (
+                  <button
+                    key={co}
+                    onClick={() => setGradingTab(co)}
+                    style={{
+                      padding: "10px 16px",
+                      border: "none",
+                      borderBottom: `2px solid ${gradingTab === co ? COMPANY_COLORS[co] : "transparent"}`,
+                      background: "transparent",
+                      color:
+                        gradingTab === co
+                          ? COMPANY_COLORS[co]
+                          : "var(--text-dim)",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      fontFamily: "DM Mono, monospace",
+                      marginBottom: -1,
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    {co.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+
+              {/* Grade rows */}
+              <div style={{ padding: "0 24px 8px" }}>
+                {GRADING_GRADES[gradingTab].map((g) => (
+                  <GradeRow
+                    key={g.grade}
+                    label={g.label}
+                    gradedPrice={getGradedPrice(gradingTab, g.grade)}
+                    rawPrice={rawPrice}
+                    gradingCost={gradingCost}
+                    color={COMPANY_COLORS[gradingTab]}
+                  />
+                ))}
+                {GRADING_GRADES[gradingTab].every(
+                  (g) => getGradedPrice(gradingTab, g.grade) === null,
+                ) && (
+                  <div
+                    style={{
+                      padding: "20px 0",
+                      textAlign: "center",
+                      fontSize: 12,
+                      color: "var(--text-dim)",
+                    }}
+                  >
+                    Graded price data not available for this card yet
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Tabs */}
-          <div>
-            <div
-              style={{
-                display: "flex",
-                gap: 0,
-                borderBottom: "1px solid var(--border)",
-                marginBottom: 20,
-              }}
-            >
-              {tabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+          {/* ── All Prices tab ── */}
+          {pageTab === "prices" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* TCGPlayer */}
+              {prices?.tcgplayer && (
+                <div
                   style={{
-                    padding: "10px 20px",
-                    border: "none",
-                    borderBottom: `2px solid ${activeTab === tab.key ? "var(--gold)" : "transparent"}`,
-                    background: "transparent",
-                    color:
-                      activeTab === tab.key
-                        ? "var(--text-primary)"
-                        : "var(--text-dim)",
-                    fontSize: 13,
-                    fontWeight: activeTab === tab.key ? 500 : 400,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    transition: "color 0.15s ease",
-                    marginBottom: -1,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 14,
+                    overflow: "hidden",
                   }}
                 >
-                  {tab.label}
-                </button>
-              ))}
+                  <div
+                    style={{
+                      padding: "12px 20px",
+                      borderBottom: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "#378ADD",
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-dim)",
+                        letterSpacing: "0.08em",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      TCGPLAYER
+                    </span>
+                  </div>
+                  {prices.tcgplayer.map((p: any, i: number) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "10px 20px",
+                        borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {p.variant ?? "Normal"}
+                          {p.grade ? ` — ${p.grade}` : ""}
+                        </div>
+                        {p.prices?.low != null && (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: "var(--text-dim)",
+                              fontFamily: "DM Mono, monospace",
+                            }}
+                          >
+                            Low: {fmt(p.prices.low)} · High:{" "}
+                            {fmt(p.prices.high)}
+                          </div>
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 500,
+                          color: "var(--gold)",
+                          fontFamily: "DM Mono, monospace",
+                        }}
+                      >
+                        {fmt(p.prices?.market)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* CardMarket */}
+              {prices?.cardmarket && prices.cardmarket.length > 0 && (
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "12px 20px",
+                      borderBottom: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "#3DAA6E",
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-dim)",
+                        letterSpacing: "0.08em",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      CARDMARKET
+                    </span>
+                  </div>
+                  {prices.cardmarket.map((p: any, i: number) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "10px 20px",
+                        borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {p.grade ? `Graded — ${p.grade}` : "Near Mint"}
+                        </div>
+                        {p.prices?.avg30 != null && (
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: "var(--text-dim)",
+                              fontFamily: "DM Mono, monospace",
+                            }}
+                          >
+                            30-day avg: {fmt(p.prices.avg30)}
+                          </div>
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 500,
+                          color: "#3DAA6E",
+                          fontFamily: "DM Mono, monospace",
+                        }}
+                      >
+                        {fmt(p.prices?.trend ?? p.prices?.market)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* eBay */}
+              {prices?.ebay && prices.ebay.length > 0 && (
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "12px 20px",
+                      borderBottom: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "#D85A30",
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-dim)",
+                        letterSpacing: "0.08em",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      EBAY SOLD
+                    </span>
+                  </div>
+                  {prices.ebay.map((p: any, i: number) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "10px 20px",
+                        borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {p.grade
+                            ? `${p.source?.toUpperCase()} ${p.grade}`
+                            : "Raw"}
+                        </div>
+                        {p.prices?.count != null && (
+                          <div
+                            style={{ fontSize: 10, color: "var(--text-dim)" }}
+                          >
+                            {p.prices.count} recent sales
+                          </div>
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 500,
+                          color: "#D85A30",
+                          fontFamily: "DM Mono, monospace",
+                        }}
+                      >
+                        {fmt(p.prices?.median ?? p.prices?.market)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* No price data */}
+              {(!prices ||
+                Object.values(prices).every((arr: any) => !arr?.length)) && (
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 14,
+                    padding: "40px 24px",
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
+                    Price data not available for this card yet
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-dim)",
+                      marginTop: 6,
+                    }}
+                  >
+                    Prices sync every 48 hours
+                  </div>
+                </div>
+              )}
             </div>
-
-            {activeTab === "grading" && (
-              <GradingAnalysis
-                rawPrice={rawPrice}
-                cardmarketPrices={prices?.cardmarket ?? []}
-              />
-            )}
-
-            {activeTab === "prices" && (
-              <div
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: 20,
-                }}
-              >
-                <PriceTable prices={allPrices} />
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div>

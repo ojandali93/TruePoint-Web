@@ -30,6 +30,19 @@ export interface CardPrice {
   midPrice: number | null;
   highPrice: number | null;
   marketPrice: number | null;
+  /**
+   * Some API responses use nested price fields (e.g. `prices.market`).
+   * Optional so callers can support both shapes.
+   */
+  prices?: Record<string, number | null> & {
+    market?: number | null;
+    low?: number | null;
+    high?: number | null;
+    avg30?: number | null;
+    trend?: number | null;
+    median?: number | null;
+    count?: number | null;
+  };
   fetchedAt: string;
 }
 
