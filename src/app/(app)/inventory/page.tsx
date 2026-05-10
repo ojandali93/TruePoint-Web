@@ -9,12 +9,6 @@ type ItemType = "raw_card" | "graded_card" | "sealed_product";
 type GradingCompany = "PSA" | "BGS" | "CGC" | "SGC" | "TAG";
 type FilterTab = "all" | "raw_card" | "graded_card" | "sealed_product";
 
-interface CardVariant {
-  variantType: string;
-  label: string;
-  color: string;
-  sortOrder: number;
-}
 interface CardRef {
   id: string;
   name: string;
@@ -24,6 +18,7 @@ interface CardRef {
   image_small: string | null;
   sets?: { id: string; name: string };
 }
+
 interface ProductRef {
   id: string;
   name: string;
@@ -31,6 +26,7 @@ interface ProductRef {
   set_id: string;
   image_url: string | null;
 }
+
 interface MarketValue {
   marketPrice: number | null;
   source: string | null;
@@ -45,7 +41,6 @@ interface InventoryItem {
   grade: string | null;
   serial_number: string | null;
   is_sealed: boolean | null;
-  variant_type: string | null;
   purchase_price: number | null;
   purchase_date: string | null;
   notes: string | null;
@@ -112,18 +107,23 @@ const PRODUCT_TYPE_LABELS: Record<string, string> = {
   collection: "Collection",
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 const fmt = (v: number | null | undefined) =>
   v != null ? `$${v.toFixed(2)}` : "—";
+
 const fmtPct = (v: number | null | undefined) =>
   v != null ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}%` : "—";
+
 const gainColor = (v: number | null | undefined) =>
   v == null ? "var(--text-dim)" : v >= 0 ? "#3DAA6E" : "#C94C4C";
 
-// ─── Search hook ──────────────────────────────────────────────────────────────
+// ─── Debounced search hook ────────────────────────────────────────────────────
 
 function useSearch(query: string, type: "cards" | "products", delay = 300) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+
   useEffect(() => {
     if (query.length < 2) return;
     const t = setTimeout(async () => {
@@ -131,15 +131,18 @@ function useSearch(query: string, type: "cards" | "products", delay = 300) {
       try {
         if (type === "cards") {
           const res = await api.get<{ data: any[] }>(
-            `/cards/search?q=${encodeURIComponent(query)}&pageSize=8`,
+            `/cards/search?q=${encodeURIComponent(query)}&pageSize=22`,
           );
+          console.log(res.data.data);
           setResults(
             (res.data.data ?? []).map((c: any) => ({
               id: c.id,
               name: c.name,
               number: c.number ?? null,
               set_id: c.set?.id ?? c.set_id ?? null,
+              // Handle both PokemonCard shape (images.small) and DB shape (image_small)
               image_small: c.images?.small ?? c.image_small ?? null,
+              // Handle both shapes for set name
               sets: c.set ? { name: c.set.name } : (c.sets ?? null),
               _type: "card" as const,
             })),
@@ -160,7 +163,8 @@ function useSearch(query: string, type: "cards" | "products", delay = 300) {
             })),
           );
         }
-      } catch {
+      } catch (err) {
+        console.error("[useSearch] failed:", err);
         setResults([]);
       } finally {
         setLoading(false);
@@ -168,16 +172,18 @@ function useSearch(query: string, type: "cards" | "products", delay = 300) {
     }, delay);
     return () => clearTimeout(t);
   }, [query, type, delay]);
+
   return {
     results: query.length < 2 ? [] : results,
     loading: query.length < 2 ? false : loading,
   };
 }
 
-// ─── Summary bar ──────────────────────────────────────────────────────────────
+// ─── Summary bar ─────────────────────────────────────────────────────────────
 
 function SummaryBar({ summary }: { summary: InventorySummary }) {
-  const gc = summary.totalGainLoss >= 0 ? "#3DAA6E" : "#C94C4C";
+  const gainColor2 = summary.totalGainLoss >= 0 ? "#3DAA6E" : "#C94C4C";
+
   return (
     <div
       style={{
@@ -203,14 +209,14 @@ function SummaryBar({ summary }: { summary: InventorySummary }) {
         {
           label: "MARKET VALUE",
           value: fmt(summary.totalMarketValue),
-          sub: "Current prices",
+          sub: "Based on current prices",
           color: "var(--gold)",
         },
         {
           label: "GAIN / LOSS",
           value: `${summary.totalGainLoss >= 0 ? "+" : ""}${fmt(summary.totalGainLoss)}`,
           sub: fmtPct(summary.totalGainLossPct),
-          color: gc,
+          color: gainColor2,
         },
       ].map((stat) => (
         <div
@@ -254,38 +260,6 @@ function SummaryBar({ summary }: { summary: InventorySummary }) {
   );
 }
 
-// ─── Variant dot ─────────────────────────────────────────────────────────────
-
-function VariantDot({
-  color,
-  label,
-}: {
-  variantType: string;
-  color: string;
-  label: string;
-}) {
-  return (
-    <div
-      title={label}
-      style={{ display: "flex", alignItems: "center", gap: 4 }}
-    >
-      <div
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: "50%",
-          background: color,
-          boxShadow: `0 0 3px ${color}88`,
-          flexShrink: 0,
-        }}
-      />
-      <span style={{ fontSize: 9, color, fontFamily: "DM Mono, monospace" }}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
 // ─── Item card ────────────────────────────────────────────────────────────────
 
 function ItemCard({
@@ -304,35 +278,20 @@ function ItemCard({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
+      }
     };
     if (menuOpen) document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
   const isSealed = item.item_type === "sealed_product" && item.is_sealed;
+  const isOpened = item.item_type === "sealed_product" && !item.is_sealed;
   const image = item.card?.image_small ?? item.product?.image_url ?? null;
   const name = item.card?.name ?? item.product?.name ?? "Unknown";
   const setName = item.card?.sets?.name ?? "";
   const cardNumber = item.card?.number ? `#${item.card.number}` : "";
-
-  // Variant display info
-  const VARIANT_COLORS: Record<string, { color: string; label: string }> = {
-    normal: { color: "#6B7280", label: "Normal" },
-    reverse_holo: { color: "#A78BFA", label: "Reverse Holo" },
-    holo: { color: "#F59E0B", label: "Holofoil" },
-    first_edition: { color: "#10B981", label: "1st Edition" },
-    pokeball_holo: { color: "#EF4444", label: "Poké Ball" },
-    masterball_holo: { color: "#8B5CF6", label: "Master Ball" },
-    greatball_holo: { color: "#3B82F6", label: "Great Ball" },
-    ultraball_holo: { color: "#F97316", label: "Ultra Ball" },
-    energy_holo: { color: "#06B6D4", label: "Energy" },
-    cosmos_holo: { color: "#EC4899", label: "Cosmos" },
-  };
-  const variantInfo = item.variant_type
-    ? VARIANT_COLORS[item.variant_type]
-    : null;
 
   return (
     <div
@@ -355,6 +314,7 @@ function ItemCard({
         (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
       }}
     >
+      {/* Image */}
       <div
         style={{
           height: 140,
@@ -375,6 +335,7 @@ function ItemCard({
         ) : (
           <div style={{ fontSize: 28, color: "var(--text-dim)" }}>□</div>
         )}
+
         {/* Type badge */}
         <div
           style={{
@@ -398,7 +359,13 @@ function ItemCard({
                 : item.item_type === "sealed_product"
                   ? "#378ADD"
                   : "var(--gold)",
-            border: `1px solid ${item.item_type === "graded_card" ? `${COMPANY_COLORS[item.grading_company!]}44` : item.item_type === "sealed_product" ? "rgba(55,138,221,0.3)" : "rgba(201,168,76,0.3)"}`,
+            border: `1px solid ${
+              item.item_type === "graded_card"
+                ? `${COMPANY_COLORS[item.grading_company!]}44`
+                : item.item_type === "sealed_product"
+                  ? "rgba(55,138,221,0.3)"
+                  : "rgba(201,168,76,0.3)"
+            }`,
           }}
         >
           {item.item_type === "graded_card"
@@ -409,6 +376,7 @@ function ItemCard({
                 : "OPENED"
               : "RAW"}
         </div>
+
         {/* Menu */}
         <div ref={menuRef} style={{ position: "absolute", top: 8, right: 8 }}>
           <button
@@ -504,6 +472,7 @@ function ItemCard({
         </div>
       </div>
 
+      {/* Info */}
       <div style={{ padding: "14px 16px" }}>
         <div
           style={{
@@ -524,7 +493,7 @@ function ItemCard({
             fontSize: 11,
             color: "var(--text-dim)",
             fontFamily: "DM Mono, monospace",
-            marginBottom: variantInfo ? 8 : 12,
+            marginBottom: 12,
           }}
         >
           {setName} {cardNumber}
@@ -533,17 +502,7 @@ function ItemCard({
             ` · ${PRODUCT_TYPE_LABELS[item.product.product_type] ?? item.product.product_type}`}
         </div>
 
-        {/* Variant indicator */}
-        {variantInfo && (
-          <div style={{ marginBottom: 10 }}>
-            <VariantDot
-              variantType={item.variant_type!}
-              color={variantInfo.color}
-              label={variantInfo.label}
-            />
-          </div>
-        )}
-
+        {/* Serial number */}
         {item.serial_number && (
           <div
             style={{
@@ -557,6 +516,7 @@ function ItemCard({
           </div>
         )}
 
+        {/* Prices */}
         <div
           style={{
             borderTop: "1px solid var(--border)",
@@ -589,6 +549,7 @@ function ItemCard({
               {fmt(item.marketValue.marketPrice)}
             </span>
           </div>
+
           {item.purchase_price != null && (
             <div
               style={{
@@ -611,6 +572,7 @@ function ItemCard({
               </span>
             </div>
           )}
+
           {item.gainLoss != null && (
             <div
               style={{
@@ -658,6 +620,7 @@ function AddEditModal({
   onSaved: () => void;
 }) {
   const isEdit = !!editItem;
+
   const [itemType, setItemType] = useState<ItemType>(
     editItem?.item_type ?? "raw_card",
   );
@@ -669,9 +632,6 @@ function AddEditModal({
     editItem?.serial_number ?? "",
   );
   const [isSealed, setIsSealed] = useState(editItem?.is_sealed ?? true);
-  const [variantType, setVariantType] = useState<string>(
-    editItem?.variant_type ?? "",
-  );
   const [purchasePrice, setPurchasePrice] = useState(
     editItem?.purchase_price?.toString() ?? "",
   );
@@ -679,6 +639,8 @@ function AddEditModal({
     editItem?.purchase_date ?? "",
   );
   const [notes, setNotes] = useState(editItem?.notes ?? "");
+
+  // Card / product search
   const [cardSearch, setCardSearch] = useState("");
   const [selectedCard, setSelectedCard] = useState<SearchResult | null>(
     editItem?.card
@@ -689,39 +651,12 @@ function AddEditModal({
     editItem?.product ? { ...editItem.product, _type: "product" } : null,
   );
   const [showDropdown, setShowDropdown] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  // Load variants for selected card
-  const [cardVariants, setCardVariants] = useState<CardVariant[]>([]);
-  const cardIdForVariants = selectedCard?.id ?? editItem?.card_id ?? null;
-  const setIdForVariants =
-    selectedCard?.set_id ?? editItem?.card?.set_id ?? null;
-  const effectiveCardVariants =
-    !cardIdForVariants || !setIdForVariants || itemType === "sealed_product"
-      ? []
-      : cardVariants;
-
-  useEffect(() => {
-    if (
-      !cardIdForVariants ||
-      !setIdForVariants ||
-      itemType === "sealed_product"
-    )
-      return;
-    api
-      .get<{ data: any[] }>(`/variants/sets/${setIdForVariants}/cards`)
-      .then((res) => {
-        const card = (res.data.data ?? []).find(
-          (c: any) => c.id === cardIdForVariants,
-        );
-        setCardVariants(card?.variants ?? []);
-      })
-      .catch(() => setCardVariants([]));
-  }, [cardIdForVariants, setIdForVariants, itemType]);
 
   const searchType = itemType === "sealed_product" ? "products" : "cards";
   const { results, loading: searchLoading } = useSearch(cardSearch, searchType);
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSave = async () => {
     setError("");
@@ -742,6 +677,7 @@ function AddEditModal({
         return;
       }
     }
+
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
@@ -749,6 +685,7 @@ function AddEditModal({
         purchaseDate: purchaseDate || null,
         notes: notes || null,
       };
+
       if (!isEdit) {
         body.itemType = itemType;
         if (itemType !== "sealed_product") body.cardId = selectedCard?.id;
@@ -759,8 +696,6 @@ function AddEditModal({
           body.serialNumber = serialNumber || null;
         }
         if (itemType === "sealed_product") body.isSealed = isSealed;
-        if (itemType === "raw_card" && variantType)
-          body.variantType = variantType;
         await api.post("/inventory", body);
       } else {
         if (itemType === "graded_card") {
@@ -769,9 +704,9 @@ function AddEditModal({
           body.serialNumber = serialNumber || null;
         }
         if (itemType === "sealed_product") body.isSealed = isSealed;
-        if (itemType === "raw_card") body.variantType = variantType || null;
         await api.put(`/inventory/${editItem!.id}`, body);
       }
+
       onSaved();
     } catch (err: any) {
       setError(err?.response?.data?.error ?? "Failed to save");
@@ -792,6 +727,7 @@ function AddEditModal({
     outline: "none",
     boxSizing: "border-box" as const,
   };
+
   const labelStyle = {
     fontSize: 11,
     color: "var(--text-secondary)",
@@ -829,6 +765,7 @@ function AddEditModal({
           boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
         }}
       >
+        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -879,7 +816,7 @@ function AddEditModal({
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Item type */}
+          {/* Item type — only on add */}
           {!isEdit && (
             <div>
               <label style={labelStyle}>Item type</label>
@@ -898,8 +835,6 @@ function AddEditModal({
                       setSelectedCard(null);
                       setSelectedProduct(null);
                       setCardSearch("");
-                      setVariantType("");
-                      setCardVariants([]);
                     }}
                     style={{
                       flex: 1,
@@ -926,7 +861,7 @@ function AddEditModal({
             </div>
           )}
 
-          {/* Card / product search */}
+          {/* Card / product search — only on add */}
           {!isEdit && (
             <div style={{ position: "relative" }}>
               <label style={labelStyle}>
@@ -992,8 +927,6 @@ function AddEditModal({
                       setSelectedCard(null);
                       setSelectedProduct(null);
                       setCardSearch("");
-                      setVariantType("");
-                      setCardVariants([]);
                     }}
                     style={{
                       border: "none",
@@ -1136,83 +1069,6 @@ function AddEditModal({
             </div>
           )}
 
-          {/* Variant selector — raw cards only, shown after card is selected */}
-          {itemType === "raw_card" && (selectedCard || editItem?.card) && (
-            <div>
-              <label style={labelStyle}>Variant (optional)</label>
-              {effectiveCardVariants.length > 0 ? (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button
-                    onClick={() => setVariantType("")}
-                    style={{
-                      padding: "5px 12px",
-                      borderRadius: 16,
-                      border: `1px solid ${!variantType ? "var(--gold)" : "var(--border)"}`,
-                      background: !variantType
-                        ? "rgba(201,168,76,0.1)"
-                        : "transparent",
-                      color: !variantType ? "var(--gold)" : "var(--text-dim)",
-                      fontSize: 11,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    Any
-                  </button>
-                  {effectiveCardVariants.map((v) => (
-                    <button
-                      key={v.variantType}
-                      onClick={() =>
-                        setVariantType(
-                          v.variantType === variantType ? "" : v.variantType,
-                        )
-                      }
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 5,
-                        padding: "5px 12px",
-                        borderRadius: 16,
-                        border: `1px solid ${variantType === v.variantType ? v.color : "var(--border)"}`,
-                        background:
-                          variantType === v.variantType
-                            ? `${v.color}18`
-                            : "transparent",
-                        color:
-                          variantType === v.variantType
-                            ? v.color
-                            : "var(--text-secondary)",
-                        fontSize: 11,
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: v.color,
-                        }}
-                      />
-                      {v.label}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--text-dim)",
-                    padding: "6px 0",
-                  }}
-                >
-                  Variant data not available for this set yet
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Grading fields */}
           {itemType === "graded_card" && (
             <>
@@ -1248,6 +1104,7 @@ function AddEditModal({
                   ))}
                 </div>
               </div>
+
               {gradingCompany && (
                 <div>
                   <label style={labelStyle}>Grade</label>
@@ -1279,6 +1136,7 @@ function AddEditModal({
                   </div>
                 </div>
               )}
+
               <div>
                 <label style={labelStyle}>Serial number (optional)</label>
                 <input
@@ -1362,7 +1220,11 @@ function AddEditModal({
               onChange={(e) => setNotes(e.target.value)}
               placeholder='Any notes about this item...'
               rows={2}
-              style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
+              style={{
+                ...inputStyle,
+                resize: "vertical",
+                lineHeight: 1.5,
+              }}
             />
           </div>
 
@@ -1434,8 +1296,467 @@ function AddEditModal({
 }
 
 // ─── Open product modal ───────────────────────────────────────────────────────
-// Imported from components/inventory/OpenProductModal
-import OpenProductModal from "./OpenProductModal";
+
+function OpenProductModal({
+  item,
+  onClose,
+  onOpened,
+}: {
+  item: InventoryItem;
+  onClose: () => void;
+  onOpened: () => void;
+}) {
+  const [pulledCards, setPulledCards] = useState<
+    {
+      id: string;
+      cardId: string;
+      cardName: string;
+      image: string | null;
+      purchasePrice: string;
+      notes: string;
+    }[]
+  >([]);
+  const [search, setSearch] = useState("");
+  const [showDrop, setShowDrop] = useState(false);
+  const { results, loading } = useSearch(search, "cards");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const addCard = (r: SearchResult) => {
+    setPulledCards((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        cardId: r.id,
+        cardName: r.name,
+        image: r.image_small ?? null,
+        purchasePrice: "",
+        notes: "",
+      },
+    ]);
+    setSearch("");
+    setShowDrop(false);
+  };
+
+  const removeCard = (id: string) =>
+    setPulledCards((prev) => prev.filter((c) => c.id !== id));
+
+  const handleOpen = async () => {
+    if (!pulledCards.length) {
+      setError("Add at least one pulled card");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await api.post(`/inventory/${item.id}/open`, {
+        pulledCards: pulledCards.map((c) => ({
+          cardId: c.cardId,
+          purchasePrice: c.purchasePrice ? Number(c.purchasePrice) : null,
+          notes: c.notes || null,
+        })),
+      });
+      onOpened();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to open product");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        backdropFilter: "blur(4px)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 16,
+          padding: 32,
+          maxWidth: 560,
+          width: "100%",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 20,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "var(--gold)",
+                letterSpacing: "0.1em",
+                fontFamily: "DM Mono, monospace",
+                marginBottom: 4,
+              }}
+            >
+              OPEN PRODUCT
+            </div>
+            <h2
+              style={{
+                fontSize: 18,
+                fontWeight: 500,
+                color: "var(--text-primary)",
+              }}
+            >
+              {item.product?.name}
+            </h2>
+            <p
+              style={{
+                fontSize: 12,
+                color: "var(--text-secondary)",
+                marginTop: 4,
+              }}
+            >
+              Record the cards you pulled. They will be added to your inventory
+              and this product will be removed.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-dim)",
+              cursor: "pointer",
+              fontSize: 16,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Card search */}
+        <div style={{ position: "relative", marginBottom: 16 }}>
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setShowDrop(true);
+            }}
+            onFocus={() => setShowDrop(true)}
+            placeholder='Search and add pulled cards...'
+            style={{
+              width: "100%",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "9px 13px",
+              fontSize: 13,
+              color: "var(--text-primary)",
+              fontFamily: "inherit",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+          {showDrop && search.length >= 2 && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                right: 0,
+                marginTop: 4,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+                zIndex: 100,
+                maxHeight: 240,
+                overflowY: "auto",
+              }}
+            >
+              {loading && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    fontSize: 12,
+                    color: "var(--text-dim)",
+                  }}
+                >
+                  Searching...
+                </div>
+              )}
+              {!loading && results.length === 0 && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    fontSize: 12,
+                    color: "var(--text-dim)",
+                  }}
+                >
+                  No results
+                </div>
+              )}
+              {results.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => addCard(r)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "9px 14px",
+                    border: "none",
+                    borderBottom: "1px solid var(--border)",
+                    background: "transparent",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    fontFamily: "inherit",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--surface-2)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  {r.image_small && (
+                    <img
+                      src={r.image_small}
+                      alt=''
+                      style={{ width: 22, height: 30, objectFit: "contain" }}
+                    />
+                  )}
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      {r.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-dim)",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      {r.sets?.name}
+                      {r.number ? ` · #${r.number}` : ""}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pulled cards list */}
+        {pulledCards.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--text-secondary)",
+                marginBottom: 4,
+              }}
+            >
+              {pulledCards.length} card{pulledCards.length !== 1 ? "s" : ""}{" "}
+              added
+            </div>
+            {pulledCards.map((c) => (
+              <div
+                key={c.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                }}
+              >
+                {c.image && (
+                  <img
+                    src={c.image}
+                    alt=''
+                    style={{
+                      width: 24,
+                      height: 34,
+                      objectFit: "contain",
+                      borderRadius: 2,
+                    }}
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                      marginBottom: 6,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {c.cardName}
+                  </div>
+                  <input
+                    type='number'
+                    min='0'
+                    step='0.01'
+                    placeholder='Purchase price (optional)'
+                    value={c.purchasePrice}
+                    onChange={(e) =>
+                      setPulledCards((prev) =>
+                        prev.map((p) =>
+                          p.id === c.id
+                            ? { ...p, purchasePrice: e.target.value }
+                            : p,
+                        ),
+                      )
+                    }
+                    style={{
+                      width: "100%",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 5,
+                      padding: "5px 9px",
+                      fontSize: 11,
+                      color: "var(--text-primary)",
+                      fontFamily: "DM Mono, monospace",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => removeCard(c.id)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text-dim)",
+                    cursor: "pointer",
+                    fontSize: 16,
+                    flexShrink: 0,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {pulledCards.length === 0 && (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "24px 0",
+              color: "var(--text-dim)",
+              fontSize: 13,
+            }}
+          >
+            Search for cards you pulled from this product
+          </div>
+        )}
+
+        {error && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "#C94C4C",
+              padding: "8px 12px",
+              background: "rgba(201,76,76,0.1)",
+              borderRadius: 6,
+              border: "1px solid rgba(201,76,76,0.2)",
+              marginBottom: 12,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            justifyContent: "flex-end",
+            borderTop: "1px solid var(--border)",
+            paddingTop: 16,
+            marginTop: 4,
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              padding: "9px 20px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: 13,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleOpen}
+            disabled={saving || !pulledCards.length}
+            style={{
+              padding: "9px 24px",
+              borderRadius: 8,
+              border: "none",
+              background: pulledCards.length
+                ? "var(--gold)"
+                : "var(--surface-2)",
+              color: pulledCards.length ? "#0D0E11" : "var(--text-dim)",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: saving || !pulledCards.length ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving
+              ? "Opening..."
+              : `Open product — add ${pulledCards.length} card${pulledCards.length !== 1 ? "s" : ""}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -1506,6 +1827,7 @@ export default function InventoryPage() {
 
   return (
     <>
+      {/* Modals */}
       {(showAddModal || editItem) && (
         <AddEditModal
           editItem={editItem}
@@ -1617,6 +1939,7 @@ export default function InventoryPage() {
       )}
 
       <div style={{ padding: "32px 40px", maxWidth: 1400, margin: "0 auto" }}>
+        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -1668,12 +1991,15 @@ export default function InventoryPage() {
               fontFamily: "inherit",
             }}
           >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> Add item
+            <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+            Add item
           </button>
         </div>
 
+        {/* Summary */}
         {summary && <SummaryBar summary={summary} />}
 
+        {/* Tabs + search */}
         <div
           style={{
             display: "flex",
@@ -1729,6 +2055,7 @@ export default function InventoryPage() {
               </button>
             ))}
           </div>
+
           <div style={{ position: "relative" }}>
             <span
               style={{
@@ -1761,6 +2088,7 @@ export default function InventoryPage() {
           </div>
         </div>
 
+        {/* Loading */}
         {loading && (
           <div
             style={{
@@ -1774,6 +2102,7 @@ export default function InventoryPage() {
           </div>
         )}
 
+        {/* Empty state */}
         {!loading && filtered.length === 0 && (
           <div style={{ textAlign: "center", padding: "80px 24px" }}>
             <div
@@ -1829,6 +2158,7 @@ export default function InventoryPage() {
           </div>
         )}
 
+        {/* Grid */}
         {!loading && filtered.length > 0 && (
           <div
             style={{
