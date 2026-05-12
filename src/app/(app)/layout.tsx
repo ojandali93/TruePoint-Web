@@ -21,6 +21,39 @@ const BOTTOM_ITEMS = [
   { href: ROUTES.SETTINGS, label: "Settings", icon: "⚙" },
 ] as const;
 
+function NavLink({
+  href,
+  label,
+  icon,
+  pathname,
+  exact = false,
+}: {
+  href: string;
+  label: string;
+  icon: string;
+  pathname: string;
+  exact?: boolean;
+}) {
+  const isActive = exact ? pathname === href : pathname.startsWith(href);
+  return (
+    <Link href={href} style={{
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "9px 10px", borderRadius: 8, fontSize: 13,
+      fontWeight: isActive ? 500 : 400,
+      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+      background: isActive ? "var(--surface-2)" : "transparent",
+      textDecoration: "none", marginBottom: 2,
+      transition: "background 0.15s ease, color 0.15s ease",
+      borderLeft: `2px solid ${isActive ? "var(--gold)" : "transparent"}`,
+    }}>
+      <span style={{ fontSize: 15, color: isActive ? "var(--gold)" : "var(--text-dim)", width: 18, textAlign: "center", flexShrink: 0, transition: "color 0.15s ease" }}>
+        {icon}
+      </span>
+      {label}
+    </Link>
+  );
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -82,27 +115,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const NavLink = ({ href, label, icon, exact = false }: { href: string; label: string; icon: string; exact?: boolean }) => {
-    const isActive = exact ? pathname === href : pathname.startsWith(href);
-    return (
-      <Link href={href} style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "9px 10px", borderRadius: 8, fontSize: 13,
-        fontWeight: isActive ? 500 : 400,
-        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-        background: isActive ? "var(--surface-2)" : "transparent",
-        textDecoration: "none", marginBottom: 2,
-        transition: "background 0.15s ease, color 0.15s ease",
-        borderLeft: `2px solid ${isActive ? "var(--gold)" : "transparent"}`,
-      }}>
-        <span style={{ fontSize: 15, color: isActive ? "var(--gold)" : "var(--text-dim)", width: 18, textAlign: "center", flexShrink: 0, transition: "color 0.15s ease" }}>
-          {icon}
-        </span>
-        {label}
-      </Link>
-    );
-  };
-
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--charcoal)" }}>
       {/* Sidebar */}
@@ -123,7 +135,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           {NAV_ITEMS.map((item) => (
-            <NavLink key={item.href} href={item.href} label={item.label} icon={item.icon}
+            <NavLink key={item.href} href={item.href} label={item.label} icon={item.icon} pathname={pathname}
               exact={item.href === ROUTES.DASHBOARD} />
           ))}
 
@@ -131,12 +143,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Bottom nav — Settings */}
           {BOTTOM_ITEMS.map((item) => (
-            <NavLink key={item.href} href={item.href} label={item.label} icon={item.icon} />
+            <NavLink key={item.href} href={item.href} label={item.label} icon={item.icon} pathname={pathname} />
           ))}
 
           {/* Admin link — only for admin users */}
           {isAdmin && (
-            <NavLink href={ROUTES.ADMIN} label="Admin" icon="⬡" />
+            <NavLink href={ROUTES.ADMIN} label="Admin" icon="⬡" pathname={pathname} />
           )}
         </nav>
 
