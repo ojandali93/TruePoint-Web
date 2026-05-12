@@ -444,6 +444,7 @@ export default function DashboardPage() {
 
       {/* ── Row 1: Portfolio value hero + quick stats ── */}
       <div
+        className='dashboard-stats-grid'
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr 1fr 1fr",
@@ -453,6 +454,7 @@ export default function DashboardPage() {
       >
         {/* Total value */}
         <div
+          className='dashboard-stats-hero'
           style={{
             gridColumn: "1 / 3",
             background: "var(--surface)",
@@ -654,6 +656,7 @@ export default function DashboardPage() {
 
       {/* ── Row 2: Quick actions ── */}
       <div
+        className='dashboard-quick-actions'
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(4, 1fr)",
@@ -728,6 +731,7 @@ export default function DashboardPage() {
 
       {/* ── Row 3: Master sets + Grading pipeline ── */}
       <div
+        className='dashboard-side-grid'
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
@@ -1073,6 +1077,7 @@ export default function DashboardPage() {
 
       {/* ── Row 4: Top performers + Arbitrage opportunities ── */}
       <div
+        className='dashboard-side-grid'
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",

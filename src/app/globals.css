@@ -18,6 +18,11 @@
   --text-dim: #787d87;
   --green: #3daa6e;
   --red: #c94c4c;
+
+  /* Mobile nav dimensions */
+  --mobile-nav-height: 64px;
+  --mobile-header-height: 52px;
+  --mobile-search-height: 60px;
 }
 
 * {
@@ -44,6 +49,173 @@ body {
 .font-mono {
   font-family: "DM Mono", monospace;
 }
+
+/* ─── Layout: desktop sidebar ─────────────────────────────────────────────── */
+
+.desktop-sidebar {
+  width: 228px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  overflow: auto;
+  min-height: 100vh;
+  background: var(--charcoal);
+  display: flex;
+  flex-direction: column;
+}
+
+.app-content {
+  flex: 1;
+}
+
+/* ─── Mobile header — logo bar ────────────────────────────────────────────── */
+
+.mobile-header {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: var(--mobile-header-height);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+/* ─── Mobile bottom nav ───────────────────────────────────────────────────── */
+
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--mobile-nav-height);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  z-index: 50;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 4px;
+  /* Safe area for notched/home-bar phones */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  padding: 6px 4px;
+  text-decoration: none;
+  border-radius: 10px;
+  transition: opacity 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-nav-item:active {
+  opacity: 0.7;
+}
+
+.mobile-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.mobile-nav-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: color 0.15s ease;
+  white-space: nowrap;
+}
+
+/* ─── Mobile sticky search — dashboard only, above bottom nav ─────────────── */
+
+.mobile-dashboard-search {
+  display: none;
+  position: fixed;
+  bottom: var(--mobile-nav-height);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  z-index: 45;
+}
+
+/* ─── Mobile breakpoint — everything below 768px ─────────────────────────── */
+
+@media (max-width: 767px) {
+  /* Hide desktop sidebar */
+  .desktop-sidebar {
+    display: none;
+  }
+
+  /* Show mobile header */
+  .mobile-header {
+    display: flex;
+  }
+
+  /* Show mobile bottom nav */
+  .mobile-bottom-nav {
+    display: flex;
+  }
+
+  /* Show dashboard search bar */
+  .mobile-dashboard-search {
+    display: block;
+  }
+
+  /* Pad main content so it clears the bottom nav (and search on dashboard) */
+  .app-main {
+    /* Bottom padding accounts for nav + potential search bar */
+    padding-bottom: calc(
+      var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px)
+    );
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* Dashboard page gets extra padding for the sticky search bar */
+  .app-main:has(.mobile-dashboard-search) .app-content {
+    padding-bottom: var(--mobile-search-height);
+  }
+
+  /* Prevent body scroll bounce revealing white background */
+  body {
+    overscroll-behavior: none;
+  }
+
+  /* Ensure full-height on mobile using dvh for proper viewport */
+  html,
+  body {
+    height: 100%;
+    height: 100dvh;
+  }
+
+  /* Scale down any fixed-width page containers */
+  .stat-card {
+    padding: 16px;
+  }
+}
+
+/* ─── Animations ──────────────────────────────────────────────────────────── */
 
 @keyframes fadeUp {
   from {
@@ -117,6 +289,8 @@ body {
 .delay-600 {
   animation-delay: 0.6s;
 }
+
+/* ─── Utility classes ─────────────────────────────────────────────────────── */
 
 .gold-shimmer {
   background: linear-gradient(
@@ -249,4 +423,55 @@ body {
   box-shadow:
     0 0 20px rgba(201, 168, 76, 0.2),
     inset 0 0 20px rgba(201, 168, 76, 0.05);
+}
+
+/* ─── Mobile overrides ────────────────────────────────────────────────────── */
+/* These rules only apply at ≤767px and do not affect desktop at all.         */
+
+@media (max-width: 767px) {
+  /* Dashboard: quick actions → 2×2 grid instead of 1×4 row */
+  .dashboard-quick-actions {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Dashboard: master sets/grading pipeline and top performers/arbitrage
+     side-by-side panels → single column full stack */
+  .dashboard-side-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Browse: series filter buttons → horizontal scroll strip */
+  .series-filter-row {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .series-filter-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Browse: sets grid → 2 columns instead of auto-fill with 200px min */
+  .sets-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Inventory: add item button → full width so text stays on one line */
+  .inventory-add-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Settings page: hide desktop-only header padding block */
+  .settings-desktop-header {
+    display: none;
+  }
+  /* Dashboard: top stats row → single column stack */
+  .dashboard-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .dashboard-stats-hero {
+    grid-column: 1 / 2 !important; /* reset the 2-column span */
+  }
 }

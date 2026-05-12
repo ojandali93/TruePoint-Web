@@ -287,7 +287,6 @@ function ItemCard({
   }, [menuOpen]);
 
   const isSealed = item.item_type === "sealed_product" && item.is_sealed;
-  const isOpened = item.item_type === "sealed_product" && !item.is_sealed;
   const image = item.card?.image_small ?? item.product?.image_url ?? null;
   const name = item.card?.name ?? item.product?.name ?? "Unknown";
   const setName = item.card?.sets?.name ?? "";
@@ -1976,6 +1975,7 @@ export default function InventoryPage() {
           </div>
           <button
             onClick={() => setShowAddModal(true)}
+            className='inventory-add-btn'
             style={{
               display: "flex",
               alignItems: "center",
@@ -1989,6 +1989,7 @@ export default function InventoryPage() {
               fontWeight: 500,
               cursor: "pointer",
               fontFamily: "inherit",
+              whiteSpace: "nowrap",
             }}
           >
             <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>

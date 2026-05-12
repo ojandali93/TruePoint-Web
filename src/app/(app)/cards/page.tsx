@@ -110,7 +110,10 @@ export default function SetsPage() {
           </span>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div
+          className='series-filter-row'
+          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+        >
           <button
             onClick={() => setSelectedSeries(null)}
             style={{
@@ -216,6 +219,7 @@ export default function SetsPage() {
           </div>
 
           <div
+            className='sets-grid'
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
