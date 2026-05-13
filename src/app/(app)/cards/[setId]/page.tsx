@@ -5,6 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSetCards } from "../../../../hooks/useCards";
 import api from "../../../../lib/api";
+import QuickAddInventory from "../../../../components/cards/QuickAddInventory";
+import { useCollections } from "../../../../context/CollectionContext";
+import type { QuickAddVariant } from "../../../../components/cards/QuickAddInventory";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -499,6 +502,42 @@ export default function SetPage({
   const [filterRarity, setFilterRarity] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string | null>(null);
   const router = useRouter();
+  const { activeCollectionId } = useCollections();
+
+  // Price map: cardId → array of variant price entries
+  const [priceMap, setPriceMap] = useState<
+    Record<string, { variant: string; market: number | null; source: string }[]>
+  >({});
+
+  useEffect(() => {
+    if (!setId) return;
+    api
+      .get<{
+        data: Record<
+          string,
+          { variant: string; market: number | null; source: string }[]
+        >;
+      }>(`/cards/${setId}/prices`)
+      .then((r) => setPriceMap(r.data.data ?? {}))
+      .catch(() => {});
+  }, [setId]);
+
+  // Build variants for a card from its price entries (dedupe by variant)
+  const getCardVariants = (cardId: string): QuickAddVariant[] => {
+    const entries = priceMap[cardId] ?? [];
+    const seen = new Set<string>();
+    return entries.reduce<QuickAddVariant[]>((acc, e) => {
+      if (!seen.has(e.variant)) {
+        seen.add(e.variant);
+        acc.push({
+          variant: e.variant,
+          label: e.variant,
+          marketPrice: e.market,
+        });
+      }
+      return acc;
+    }, []);
+  };
 
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>(
@@ -797,99 +836,139 @@ export default function SetPage({
               gap: 12,
             }}
           >
-            {filtered.map((card) => (
-              <button
-                key={card.id}
-                onClick={() => router.push(`/cards/${setId}/${card.id}`)}
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  padding: 12,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "border-color 0.15s ease, transform 0.15s ease",
-                  fontFamily: "inherit",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "var(--gold-dim)";
-                  e.currentTarget.style.transform = "translateY(-3px)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "var(--border)";
-                  e.currentTarget.style.transform = "translateY(0)";
-                }}
-              >
-                {card.images?.small && (
+            {filtered.map((card) => {
+              const cardVariants = getCardVariants(card.id);
+              return (
+                <div
+                  key={card.id}
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: 12,
+                    cursor: "default",
+                    textAlign: "left",
+                    transition: "border-color 0.15s ease, transform 0.15s ease",
+                    fontFamily: "inherit",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.borderColor =
+                      "var(--gold-dim)";
+                    (e.currentTarget as HTMLDivElement).style.transform =
+                      "translateY(-3px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.borderColor =
+                      "var(--border)";
+                    (e.currentTarget as HTMLDivElement).style.transform =
+                      "translateY(0)";
+                  }}
+                >
+                  {/* Card image — clicking navigates to detail */}
+                  {card.images?.small && (
+                    <div
+                      style={{
+                        marginBottom: 8,
+                        borderRadius: 6,
+                        overflow: "hidden",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => router.push(`/cards/${setId}/${card.id}`)}
+                    >
+                      <Image
+                        src={card.images.small}
+                        alt={card.name}
+                        width={150}
+                        height={210}
+                        style={{
+                          width: "100%",
+                          height: "auto",
+                          display: "block",
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Name — clicking navigates */}
+                  <div
+                    onClick={() => router.push(`/cards/${setId}/${card.id}`)}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                      marginBottom: 3,
+                      lineHeight: 1.3,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {card.name}
+                  </div>
+
+                  {/* Number + rarity */}
                   <div
                     style={{
-                      marginBottom: 8,
-                      borderRadius: 6,
-                      overflow: "hidden",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 2,
                     }}
                   >
-                    <Image
-                      src={card.images.small}
-                      alt={card.name}
-                      width={150}
-                      height={210}
-                      style={{
-                        width: "100%",
-                        height: "auto",
-                        display: "block",
-                      }}
-                    />
-                  </div>
-                )}
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "var(--text-primary)",
-                    marginBottom: 3,
-                    lineHeight: 1.3,
-                  }}
-                >
-                  {card.name}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-dim)",
-                      fontFamily: "DM Mono, monospace",
-                    }}
-                  >
-                    #{card.number}
-                  </span>
-                  {card.rarity && (
                     <span
                       style={{
-                        fontSize: 9,
-                        color:
-                          card.rarity === "Special Illustration Rare"
-                            ? "var(--gold)"
-                            : card.rarity === "Hyper Rare"
-                              ? "#C9A84C"
-                              : card.rarity === "Illustration Rare"
-                                ? "#8A8FA0"
-                                : "var(--text-dim)",
+                        fontSize: 10,
+                        color: "var(--text-dim)",
                         fontFamily: "DM Mono, monospace",
-                        letterSpacing: "0.04em",
                       }}
                     >
-                      {rarityAbbr(card.rarity)}
+                      #{card.number}
                     </span>
-                  )}
+                    {card.rarity && (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          color:
+                            card.rarity === "Special Illustration Rare"
+                              ? "var(--gold)"
+                              : card.rarity === "Hyper Rare"
+                                ? "#C9A84C"
+                                : card.rarity === "Illustration Rare"
+                                  ? "#8A8FA0"
+                                  : "var(--text-dim)",
+                          fontFamily: "DM Mono, monospace",
+                          letterSpacing: "0.04em",
+                        }}
+                      >
+                        {rarityAbbr(card.rarity)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Quick add — variants with qty stepper */}
+                  <QuickAddInventory
+                    cardId={card.id}
+                    cardName={card.name}
+                    setId={setId}
+                    setName={card.set?.name ?? setId}
+                    cardNumber={card.number}
+                    imageSmall={card.images?.small ?? null}
+                    variants={
+                      cardVariants.length > 0
+                        ? cardVariants
+                        : [
+                            {
+                              variant: "normal",
+                              label: "Normal",
+                              marketPrice: null,
+                            },
+                          ]
+                    }
+                    collectionId={activeCollectionId}
+                  />
                 </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

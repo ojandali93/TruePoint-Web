@@ -376,7 +376,10 @@ export default function LandingPage() {
             style={{ objectFit: "contain" }}
             priority
           />
-          <div style={{ display: "flex", gap: 28, alignItems: "center" }}>
+          <div
+            className='landing-nav-right'
+            style={{ display: "flex", gap: 28, alignItems: "center" }}
+          >
             {["Features", "Collection", "Pricing", "Roadmap"].map((l) => (
               <a
                 key={l}
@@ -599,7 +602,7 @@ export default function LandingPage() {
               Pokémon TCG as a serious financial asset.
             </p>
             <div
-              className='animate-fade-up delay-500'
+              className='animate-fade-up delay-500 landing-hero-btns'
               style={{ display: "flex", gap: 16 }}
             >
               <Link href='#pricing' className='btn-primary'>
@@ -615,7 +618,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div
-            className='animate-fade-in delay-600'
+            className='animate-fade-in delay-600 landing-hero-cards'
             style={{
               position: "absolute",
               right: 24,
@@ -717,6 +720,7 @@ export default function LandingPage() {
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
           }}
+          className='landing-metrics-grid'
         >
           {METRICS.map((m, i) => (
             <div
@@ -755,6 +759,7 @@ export default function LandingPage() {
       {/* ── Features ─────────────────────────────────────────────── */}
       <section
         id='features'
+        className='landing-section'
         style={{ padding: "120px 24px", maxWidth: 1200, margin: "0 auto" }}
       >
         <div style={{ marginBottom: 72 }}>
@@ -788,7 +793,7 @@ export default function LandingPage() {
           {FEATURES.map((f, i) => (
             <div
               key={i}
-              className='card-hover'
+              className='card-hover landing-feature-row'
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
@@ -930,6 +935,7 @@ export default function LandingPage() {
             </p>
           </div>
           <div
+            className='landing-3col-grid'
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(3, 1fr)",
@@ -1036,6 +1042,7 @@ export default function LandingPage() {
             </h2>
           </div>
           <div
+            className='landing-4col-grid'
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(4, 1fr)",
@@ -1147,6 +1154,7 @@ export default function LandingPage() {
             </p>
           </div>
           <div
+            className='landing-pricing-grid'
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(3, 1fr)",
@@ -1358,6 +1366,7 @@ export default function LandingPage() {
             </h2>
           </div>
           <div
+            className='landing-4col-grid'
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(4, 1fr)",
@@ -1474,6 +1483,7 @@ export default function LandingPage() {
             </h2>
           </div>
           <div
+            className='landing-2col-grid'
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(2, 1fr)",
@@ -1603,7 +1613,10 @@ export default function LandingPage() {
           Join collectors who make data-driven decisions. Free to start — no
           credit card required.
         </p>
-        <div style={{ display: "flex", gap: 16, justifyContent: "center" }}>
+        <div
+          className='landing-cta-btns'
+          style={{ display: "flex", gap: 16, justifyContent: "center" }}
+        >
           <Link
             href='/register'
             className='btn-primary'
@@ -1630,8 +1643,8 @@ export default function LandingPage() {
         }}
       >
         <div
+          className='landing-footer-inner'
           style={{
-            maxWidth: 1200,
             margin: "0 auto",
             display: "flex",
             alignItems: "center",

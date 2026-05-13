@@ -1,12 +1,13 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import api from "../../../lib/api";
+import { usePendingAction } from "../../../context/PendingActionContext";
 
 // ─── AI Grading (lazy imported inline below) ──────────────────────────────────
 import AIGradingPage from "./ai/page";
 
-type PageTab = "arbitrage" | "submissions" | "ai";
+type PageTab = "arbitrage" | "submissions" | "ai" | "trade";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1470,14 +1471,16 @@ function StatusPipeline({ status }: { status: string }) {
 function NewSubmissionModal({
   onClose,
   onCreated,
+  prefill,
 }: {
   onClose: () => void;
   onCreated: () => void;
+  prefill?: { name: string; setName: string; number: string } | null;
 }) {
   const [form, setForm] = useState({
-    cardName: "",
-    cardSet: "",
-    cardNumber: "",
+    cardName: prefill?.name ?? "",
+    cardSet: prefill?.setName ?? "",
+    cardNumber: prefill?.number ?? "",
     gradingCompany: "PSA",
     serviceTier: "value",
     declaredValue: "",
@@ -2183,6 +2186,27 @@ function GradingSubmissionsPage() {
   const [filterStatus, setFilterStatus] = useState<string>("active");
   const [showNew, setShowNew] = useState(false);
   const [advancing, setAdvancing] = useState<Submission | null>(null);
+  const [pendingSubmitCards, setPendingSubmitCards] = useState<
+    { name: string; setName: string; number: string }[]
+  >([]);
+  const { pendingCards, actionType, clearPendingAction } = usePendingAction();
+
+  // If inventory sent cards to submit, open the new submission modal for each
+  useEffect(() => {
+    if (actionType !== "submit" || pendingCards.length === 0) return;
+    const t = window.setTimeout(() => {
+      setPendingSubmitCards(
+        pendingCards.map((pc) => ({
+          name: pc.name,
+          setName: pc.setName,
+          number: pc.number,
+        })),
+      );
+      setShowNew(true);
+      clearPendingAction();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     try {
@@ -2668,10 +2692,813 @@ function GradingSubmissionsPage() {
   );
 }
 
+// ─── Trade Calculator ─────────────────────────────────────────────────────────
+
+interface TradeCard {
+  id: string;
+  cardId: string;
+  name: string;
+  number: string;
+  setName: string;
+  imageSmall: string | null;
+  variant: string;
+  marketPrice: number | null;
+  isFromInventory: boolean;
+  purchasePrice: number | null;
+}
+
+interface CardSearchResult {
+  id: string;
+  name: string;
+  number: string;
+  set_id: string;
+  image_small: string | null;
+  sets?: { name: string };
+}
+
+interface PriceResult {
+  variant: string;
+  market: number | null;
+  source: string;
+}
+
+function TradeCardRow({
+  card,
+  onRemove,
+}: {
+  card: TradeCard;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 0",
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
+      {card.imageSmall ? (
+        <img
+          src={card.imageSmall}
+          alt={card.name}
+          style={{
+            width: 36,
+            height: 50,
+            borderRadius: 4,
+            objectFit: "cover",
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 36,
+            height: 50,
+            borderRadius: 4,
+            background: "var(--surface-2)",
+            flexShrink: 0,
+          }}
+        />
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {card.name}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 1 }}>
+          #{card.number} · {card.setName}
+          {card.variant !== "normal" && (
+            <span
+              style={{
+                marginLeft: 6,
+                padding: "1px 5px",
+                borderRadius: 3,
+                background: "var(--surface-3)",
+                fontSize: 10,
+              }}
+            >
+              {card.variant}
+            </span>
+          )}
+        </div>
+        {card.isFromInventory && card.purchasePrice && (
+          <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 1 }}>
+            Paid: ${card.purchasePrice.toFixed(2)}
+          </div>
+        )}
+      </div>
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        {card.marketPrice !== null ? (
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: "var(--gold)",
+              fontFamily: "DM Mono, monospace",
+            }}
+          >
+            ${card.marketPrice.toFixed(2)}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>No price</div>
+        )}
+      </div>
+      <button
+        onClick={() => onRemove(card.id)}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "var(--text-dim)",
+          cursor: "pointer",
+          fontSize: 16,
+          padding: "4px",
+          lineHeight: 1,
+          flexShrink: 0,
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function TradeCardSearch({
+  onAdd,
+  side,
+}: {
+  onAdd: (card: TradeCard) => void;
+  side: "you" | "them";
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<CardSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [loadingPrice, setLoadingPrice] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addIdSeq = useRef(0);
+
+  const search = useCallback(async (q: string) => {
+    if (q.length < 2) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const res = await api.get<{ data: { data: CardSearchResult[] } }>(
+        `/cards/search?q=${encodeURIComponent(q)}&limit=8`,
+      );
+      setResults(res.data.data?.data ?? []);
+    } catch {
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => search(query), 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query, search]);
+
+  const addCard = async (card: CardSearchResult) => {
+    setLoadingPrice(card.id);
+    try {
+      const res = await api.get<{ data: Record<string, PriceResult[]> }>(
+        `/cards/${card.set_id}/prices`,
+      );
+      const prices = res.data.data?.[card.id] ?? [];
+      const normal = prices.find((p) => p.variant === "normal") ?? prices[0];
+      onAdd({
+        id: `${side}-${card.id}-${++addIdSeq.current}`,
+        cardId: card.id,
+        name: card.name,
+        number: card.number,
+        setName: card.sets?.name ?? card.set_id,
+        imageSmall: card.image_small,
+        variant: normal?.variant ?? "normal",
+        marketPrice: normal?.market ?? null,
+        isFromInventory: false,
+        purchasePrice: null,
+      });
+      setQuery("");
+      setResults([]);
+    } catch {
+      onAdd({
+        id: `${side}-${card.id}-${++addIdSeq.current}`,
+        cardId: card.id,
+        name: card.name,
+        number: card.number,
+        setName: card.sets?.name ?? card.set_id,
+        imageSmall: card.image_small,
+        variant: "normal",
+        marketPrice: null,
+        isFromInventory: false,
+        purchasePrice: null,
+      });
+      setQuery("");
+      setResults([]);
+    } finally {
+      setLoadingPrice(null);
+    }
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <div style={{ position: "relative" }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder='Search cards to add…'
+          style={{
+            width: "100%",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 9,
+            padding: "9px 36px 9px 12px",
+            fontSize: 13,
+            color: "var(--text-primary)",
+            fontFamily: "inherit",
+            outline: "none",
+          }}
+        />
+        {searching && (
+          <div
+            style={{
+              position: "absolute",
+              right: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 14,
+              height: 14,
+              border: "2px solid var(--border)",
+              borderTopColor: "var(--gold)",
+              borderRadius: "50%",
+              animation: "spin 0.7s linear infinite",
+            }}
+          />
+        )}
+      </div>
+      {results.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            overflow: "hidden",
+            zIndex: 50,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          }}
+        >
+          {results.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => addCard(r)}
+              disabled={loadingPrice === r.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "8px 12px",
+                background: "transparent",
+                border: "none",
+                borderBottom: "1px solid var(--border)",
+                color: "var(--text-primary)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+              }}
+            >
+              {r.image_small && (
+                <img
+                  src={r.image_small}
+                  alt=''
+                  style={{
+                    width: 28,
+                    height: 39,
+                    borderRadius: 3,
+                    objectFit: "cover",
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {r.name}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  #{r.number} · {r.sets?.name ?? r.set_id}
+                </div>
+              </div>
+              {loadingPrice === r.id && (
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    border: "2px solid var(--border)",
+                    borderTopColor: "var(--gold)",
+                    borderRadius: "50%",
+                    animation: "spin 0.7s linear infinite",
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TradeSide({
+  label,
+  cards,
+  onAdd,
+  onRemove,
+  total,
+  side,
+}: {
+  label: string;
+  cards: TradeCard[];
+  onAdd: (card: TradeCard) => void;
+  onRemove: (id: string) => void;
+  total: number;
+  side: "you" | "them";
+}) {
+  const sideColor = side === "you" ? "#3B82F6" : "#8B5CF6";
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: `1px solid ${sideColor}40`,
+        borderRadius: 14,
+        padding: "20px",
+        flex: 1,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: sideColor,
+            fontFamily: "DM Mono, monospace",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: "var(--text-primary)",
+            fontFamily: "DM Mono, monospace",
+          }}
+        >
+          ${total.toFixed(2)}
+        </div>
+      </div>
+      <TradeCardSearch onAdd={onAdd} side={side} />
+      <div>
+        {cards.length === 0 ? (
+          <div
+            style={{
+              padding: "20px 0",
+              textAlign: "center",
+              color: "var(--text-dim)",
+              fontSize: 13,
+            }}
+          >
+            No cards added yet
+          </div>
+        ) : (
+          cards.map((c) => (
+            <TradeCardRow key={c.id} card={c} onRemove={onRemove} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TradeVerdict({
+  youTotal,
+  themTotal,
+  youCards,
+  themCards,
+}: {
+  youTotal: number;
+  themTotal: number;
+  youCards: TradeCard[];
+  themCards: TradeCard[];
+}) {
+  if (youCards.length === 0 || themCards.length === 0) return null;
+
+  const diff = youTotal - themTotal;
+  const absDiff = Math.abs(diff);
+  const pct = themTotal > 0 ? (absDiff / themTotal) * 100 : 0;
+  const FAIR_THRESHOLD = 5; // within 5% is fair
+
+  let verdict: {
+    label: string;
+    detail: string;
+    color: string;
+    bg: string;
+    border: string;
+  };
+
+  if (pct <= FAIR_THRESHOLD) {
+    verdict = {
+      label: "Fair Trade",
+      detail: `Values are within ${pct.toFixed(1)}% of each other — this is an even swap.`,
+      color: "#10B981",
+      bg: "rgba(16,185,129,0.08)",
+      border: "rgba(16,185,129,0.25)",
+    };
+  } else if (diff > 0) {
+    verdict = {
+      label: "You're Giving More",
+      detail: `You're trading $${absDiff.toFixed(2)} more in value (${pct.toFixed(1)}% over). Consider asking for something extra.`,
+      color: "#F59E0B",
+      bg: "rgba(245,158,11,0.08)",
+      border: "rgba(245,158,11,0.25)",
+    };
+  } else {
+    verdict = {
+      label: "You're Getting More",
+      detail: `You're receiving $${absDiff.toFixed(2)} more in value (${pct.toFixed(1)}% over). Good trade for you.`,
+      color: "#3B82F6",
+      bg: "rgba(59,130,246,0.08)",
+      border: "rgba(59,130,246,0.25)",
+    };
+  }
+
+  // Cost basis gain/loss if any inventory cards included
+  const inventoryCards = youCards.filter(
+    (c) => c.isFromInventory && c.purchasePrice && c.marketPrice,
+  );
+  const costBasisNote =
+    inventoryCards.length > 0
+      ? (() => {
+          const totalPaid = inventoryCards.reduce(
+            (s, c) => s + (c.purchasePrice ?? 0),
+            0,
+          );
+          const totalMarket = inventoryCards.reduce(
+            (s, c) => s + (c.marketPrice ?? 0),
+            0,
+          );
+          const gain = totalMarket - totalPaid;
+          return gain >= 0
+            ? `Your cards from inventory have gained $${gain.toFixed(2)} from cost basis.`
+            : `Your cards from inventory are down $${Math.abs(gain).toFixed(2)} from cost basis.`;
+        })()
+      : null;
+
+  return (
+    <div
+      style={{
+        background: verdict.bg,
+        border: `1px solid ${verdict.border}`,
+        borderRadius: 14,
+        padding: "20px 24px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginBottom: 8,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 20,
+            fontWeight: 700,
+            color: verdict.color,
+            fontFamily: "DM Mono, monospace",
+          }}
+        >
+          {verdict.label}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            padding: "3px 10px",
+            borderRadius: 6,
+            background: `${verdict.color}22`,
+            color: verdict.color,
+            fontFamily: "DM Mono, monospace",
+            fontWeight: 500,
+          }}
+        >
+          {pct.toFixed(1)}% {diff > 0 ? "over" : diff < 0 ? "under" : "even"}
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: 13,
+          color: "var(--text-secondary)",
+          marginBottom: costBasisNote ? 10 : 0,
+        }}
+      >
+        {verdict.detail}
+      </div>
+      {costBasisNote && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--text-dim)",
+            marginTop: 8,
+            paddingTop: 8,
+            borderTop: `1px solid ${verdict.border}`,
+          }}
+        >
+          {costBasisNote}
+        </div>
+      )}
+      <div
+        style={{
+          display: "flex",
+          gap: 24,
+          marginTop: 14,
+          paddingTop: 14,
+          borderTop: `1px solid ${verdict.border}`,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              marginBottom: 3,
+            }}
+          >
+            YOU GIVE
+          </div>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: "#3B82F6",
+              fontFamily: "DM Mono, monospace",
+            }}
+          >
+            ${youTotal.toFixed(2)}
+          </div>
+        </div>
+        <div
+          style={{
+            fontSize: 20,
+            color: "var(--text-dim)",
+            alignSelf: "flex-end",
+            paddingBottom: 2,
+          }}
+        >
+          ⇄
+        </div>
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              marginBottom: 3,
+            }}
+          >
+            YOU RECEIVE
+          </div>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: "#8B5CF6",
+              fontFamily: "DM Mono, monospace",
+            }}
+          >
+            ${themTotal.toFixed(2)}
+          </div>
+        </div>
+        <div style={{ marginLeft: "auto", textAlign: "right" }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              marginBottom: 3,
+            }}
+          >
+            DIFFERENCE
+          </div>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: verdict.color,
+              fontFamily: "DM Mono, monospace",
+            }}
+          >
+            {diff >= 0 ? "+" : ""}${diff.toFixed(2)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TradeCalculatorPage() {
+  const { pendingCards, actionType, clearPendingAction } = usePendingAction();
+
+  // Convert pending inventory cards to TradeCards for "your side"
+  const initialYouCards: TradeCard[] = (
+    actionType === "trade" ? pendingCards : []
+  ).map((pc) => ({
+    id: `you-${pc.inventoryId}`,
+    cardId: pc.cardId ?? pc.inventoryId,
+    name: pc.name,
+    number: pc.number,
+    setName: pc.setName,
+    imageSmall: pc.imageSmall,
+    variant: "normal",
+    marketPrice: pc.marketPrice,
+    isFromInventory: true,
+    purchasePrice: pc.purchasePrice,
+  }));
+
+  const [youCards, setYouCards] = useState<TradeCard[]>(initialYouCards);
+  const [themCards, setThemCards] = useState<TradeCard[]>([]);
+
+  // Clear pending after consuming so it doesn't persist on re-visit
+  useEffect(() => {
+    if (actionType === "trade" && pendingCards.length > 0) {
+      clearPendingAction();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const youTotal = youCards.reduce((s, c) => s + (c.marketPrice ?? 0), 0);
+  const themTotal = themCards.reduce((s, c) => s + (c.marketPrice ?? 0), 0);
+
+  const removeYou = (id: string) =>
+    setYouCards((p) => p.filter((c) => c.id !== id));
+  const removeThem = (id: string) =>
+    setThemCards((p) => p.filter((c) => c.id !== id));
+
+  const reset = () => {
+    setYouCards([]);
+    setThemCards([]);
+  };
+
+  return (
+    <div style={{ padding: "28px 40px", maxWidth: 1100, margin: "0 auto" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              fontSize: 22,
+              fontWeight: 500,
+              color: "var(--text-primary)",
+              marginBottom: 4,
+            }}
+          >
+            Trade Calculator
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+            Add cards to each side to see if a trade is fair based on current
+            market prices.
+          </p>
+        </div>
+        {(youCards.length > 0 || themCards.length > 0) && (
+          <button
+            onClick={reset}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              flexShrink: 0,
+            }}
+          >
+            Reset
+          </button>
+        )}
+      </div>
+
+      <TradeVerdict
+        youTotal={youTotal}
+        themTotal={themTotal}
+        youCards={youCards}
+        themCards={themCards}
+      />
+
+      {(youCards.length > 0 || themCards.length > 0) && (
+        <div style={{ height: 20 }} />
+      )}
+
+      <div className='trade-sides-grid'>
+        <TradeSide
+          label='YOUR SIDE'
+          cards={youCards}
+          onAdd={(c) => setYouCards((p) => [...p, c])}
+          onRemove={removeYou}
+          total={youTotal}
+          side='you'
+        />
+        <TradeSide
+          label='THEIR SIDE'
+          cards={themCards}
+          onAdd={(c) => setThemCards((p) => [...p, c])}
+          onRemove={removeThem}
+          total={themTotal}
+          side='them'
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 20,
+          padding: "12px 16px",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          fontSize: 11,
+          color: "var(--text-dim)",
+        }}
+      >
+        Prices sourced from TCGAPIs market data. A trade within 5% value
+        difference is considered fair. Prices reflect raw ungraded cards unless
+        otherwise noted.
+      </div>
+    </div>
+  );
+}
+
 // ─── Main grading page ────────────────────────────────────────────────────────
 
 export default function GradingPage() {
   const [tab, setTab] = useState<PageTab>("arbitrage");
+  const { pendingCards, actionType } = usePendingAction();
+
+  // On mount: if inventory sent cards over, switch to the right tab
+  useEffect(() => {
+    let t: number | undefined;
+    if (pendingCards.length > 0 && actionType === "trade") {
+      t = window.setTimeout(() => setTab("trade"), 0);
+    } else if (pendingCards.length > 0 && actionType === "submit") {
+      t = window.setTimeout(() => setTab("submissions"), 0);
+    }
+    return () => {
+      if (t !== undefined) window.clearTimeout(t);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -2699,6 +3526,7 @@ export default function GradingPage() {
             { key: "arbitrage", label: "Regrade Arbitrage" },
             { key: "submissions", label: "Submissions" },
             { key: "ai", label: "✦ AI Grade Prediction" },
+            { key: "trade", label: "⇄ Trade Calculator" },
           ].map((t) => (
             <button
               key={t.key}
@@ -2727,6 +3555,8 @@ export default function GradingPage() {
         <GradingArbitragePage />
       ) : tab === "submissions" ? (
         <GradingSubmissionsPage />
+      ) : tab === "trade" ? (
+        <TradeCalculatorPage />
       ) : (
         <AIGradingPage />
       )}

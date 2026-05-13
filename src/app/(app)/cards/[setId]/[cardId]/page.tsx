@@ -4,6 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCardDetail } from "../../../../../hooks/useCards";
 import type { PriceEntry } from "../../../../../hooks/useCards";
+import QuickAddInventory from "../../../../../components/cards/QuickAddInventory";
+import { useCollections } from "../../../../../context/CollectionContext";
+import type { QuickAddVariant } from "../../../../../components/cards/QuickAddInventory";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -765,6 +768,7 @@ export default function CardDetailPage({
   const { card, prices, loading, error } = useCardDetail(cardId);
   const [activeTab, setActiveTab] = useState<"prices" | "grading">("grading");
   const [imageFlipped, setImageFlipped] = useState(false);
+  const { activeCollectionId } = useCollections();
 
   if (loading) {
     return (
@@ -802,6 +806,32 @@ export default function CardDetailPage({
     ...(prices?.justtcg ?? []),
     ...(prices?.ebay ?? []),
   ];
+
+  // Build raw variant list for QuickAdd (dedupe by variant, prefer TCGPlayer prices)
+  const rawVariants: QuickAddVariant[] = (() => {
+    const raw = (prices?.tcgplayer ?? []).filter((p) => !p.grade);
+    if (raw.length === 0) {
+      const fallback = allPrices.find((p) => !p.grade);
+      if (fallback)
+        return [
+          {
+            variant: fallback.variant ?? "normal",
+            label: fallback.variant ?? "Normal",
+            marketPrice: fallback.marketPrice,
+          },
+        ];
+      return [{ variant: "normal", label: "Normal", marketPrice: null }];
+    }
+    const seen = new Set<string>();
+    return raw.reduce<QuickAddVariant[]>((acc, p) => {
+      const v = p.variant ?? "normal";
+      if (!seen.has(v)) {
+        seen.add(v);
+        acc.push({ variant: v, label: v, marketPrice: p.marketPrice });
+      }
+      return acc;
+    }, []);
+  })();
 
   const rawPrice =
     prices?.tcgplayer?.find(
@@ -1016,6 +1046,47 @@ export default function CardDetailPage({
               </div>
             </div>
           )}
+
+          {/* Quick Add to Inventory */}
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: "16px 20px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--text-dim)",
+                fontFamily: "DM Mono, monospace",
+                letterSpacing: "0.08em",
+                marginBottom: 4,
+              }}
+            >
+              ADD TO INVENTORY
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--text-secondary)",
+                marginBottom: 8,
+              }}
+            >
+              Raw cards — select variant and quantity
+            </div>
+            <QuickAddInventory
+              cardId={cardId}
+              cardName={card.name}
+              setId={setId}
+              setName={card.set?.name ?? setId}
+              cardNumber={card.number}
+              imageSmall={card.images?.small ?? null}
+              variants={rawVariants}
+              collectionId={activeCollectionId}
+            />
+          </div>
 
           {/* Tabs */}
           <div>

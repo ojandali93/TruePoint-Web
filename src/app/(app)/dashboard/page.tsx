@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../../../lib/supabase";
 import api from "../../../lib/api";
 import { ROUTES } from "../../../constants/routes";
+import { useCollections } from "../../../context/CollectionContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -313,6 +314,10 @@ export default function DashboardPage() {
     arbitrage: true,
   });
 
+  const { collections, activeCollectionId, setActiveCollectionId } =
+    useCollections();
+  const hasMultipleCollections = collections.length > 1;
+
   // Greeting based on time of day
   const hour = new Date().getHours();
   const greeting =
@@ -345,7 +350,9 @@ export default function DashboardPage() {
       Promise.all([
         // Portfolio
         api
-          .get<{ data: PortfolioData }>("/portfolio?days=30")
+          .get<{ data: PortfolioData }>(
+            `/portfolio?days=30${activeCollectionId ? "&collectionId=" + activeCollectionId : ""}`,
+          )
           .then((r) => setPortfolio(r.data.data))
           .catch(() => {})
           .finally(() => setLoading((p) => ({ ...p, portfolio: false }))),
@@ -394,7 +401,7 @@ export default function DashboardPage() {
       ]);
     };
     load();
-  }, [router, supabase]);
+  }, [router, supabase, activeCollectionId]);
 
   const sparkData = portfolio?.history.map((h) => h.totalValue) ?? [];
   const netPositive = (portfolio?.gainLoss ?? 0) >= 0;
@@ -441,6 +448,89 @@ export default function DashboardPage() {
           Here&apos;s your collection at a glance.
         </p>
       </div>
+
+      {/* ── Collection switcher — shown when user has multiple collections ── */}
+      {hasMultipleCollections && (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            marginBottom: 20,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              marginRight: 4,
+            }}
+          >
+            VIEWING:
+          </span>
+          <button
+            onClick={() => setActiveCollectionId(null)}
+            style={{
+              padding: "5px 12px",
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 500,
+              border: `1px solid ${activeCollectionId === null ? "var(--gold)" : "var(--border)"}`,
+              background:
+                activeCollectionId === null
+                  ? "rgba(201,168,76,0.12)"
+                  : "transparent",
+              color:
+                activeCollectionId === null
+                  ? "var(--gold)"
+                  : "var(--text-secondary)",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            All
+          </button>
+          {collections.map((col) => (
+            <button
+              key={col.id}
+              onClick={() => setActiveCollectionId(col.id)}
+              style={{
+                padding: "5px 12px",
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 500,
+                border: `1px solid ${activeCollectionId === col.id ? col.color : "var(--border)"}`,
+                background:
+                  activeCollectionId === col.id
+                    ? `${col.color}20`
+                    : "transparent",
+                color:
+                  activeCollectionId === col.id
+                    ? col.color
+                    : "var(--text-secondary)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: col.color,
+                  display: "inline-block",
+                }}
+              />
+              {col.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Row 1: Portfolio value hero + quick stats ── */}
       <div

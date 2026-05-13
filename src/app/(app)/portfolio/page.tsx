@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useCollections } from "../../../context/CollectionContext";
 import {
   XAxis,
   YAxis,
@@ -555,10 +556,17 @@ export default function PortfolioPage() {
   const [snapshotting, setSnapshotting] = useState(false);
   const [snapshotDone, setSnapshotDone] = useState(false);
 
+  const { activeCollectionId, collections, setActiveCollectionId } =
+    useCollections();
+  const hasMultipleCollections = collections.length > 1;
+  const collectionParam = activeCollectionId
+    ? `&collectionId=${activeCollectionId}`
+    : "";
+
   const load = useCallback(async (days = 90) => {
     try {
       const res = await api.get<{ data: PortfolioData }>(
-        `/portfolio?days=${days}`,
+        `/portfolio?days=${days}${collectionParam}`,
       );
       setData(res.data.data);
     } catch (err) {
@@ -641,6 +649,78 @@ export default function PortfolioPage() {
 
   return (
     <div style={{ padding: "32px 40px", maxWidth: 1400, margin: "0 auto" }}>
+      {/* ── Collection switcher ── */}
+      {hasMultipleCollections && (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            marginBottom: 24,
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            onClick={() => setActiveCollectionId(null)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 500,
+              border: `1px solid ${activeCollectionId === null ? "var(--gold)" : "var(--border)"}`,
+              background:
+                activeCollectionId === null
+                  ? "rgba(201,168,76,0.12)"
+                  : "transparent",
+              color:
+                activeCollectionId === null
+                  ? "var(--gold)"
+                  : "var(--text-secondary)",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            All Collections
+          </button>
+          {collections.map((col) => (
+            <button
+              key={col.id}
+              onClick={() => setActiveCollectionId(col.id)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 500,
+                border: `1px solid ${activeCollectionId === col.id ? col.color : "var(--border)"}`,
+                background:
+                  activeCollectionId === col.id
+                    ? `${col.color}20`
+                    : "transparent",
+                color:
+                  activeCollectionId === col.id
+                    ? col.color
+                    : "var(--text-secondary)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: col.color,
+                  display: "inline-block",
+                }}
+              />
+              {col.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <div
         style={{

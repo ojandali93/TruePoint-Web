@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useCollections } from "../../../context/CollectionContext";
+import {
+  usePendingAction,
+  PendingCard,
+} from "../../../context/PendingActionContext";
+import { ROUTES } from "../../../constants/routes";
 import api from "../../../lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -267,11 +274,15 @@ function ItemCard({
   onEdit,
   onDelete,
   onOpen,
+  selected,
+  onSelect,
 }: {
   item: InventoryItem;
   onEdit: (item: InventoryItem) => void;
   onDelete: (id: string) => void;
   onOpen: (item: InventoryItem) => void;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -295,16 +306,26 @@ function ItemCard({
   return (
     <div
       style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
+        background: selected ? "rgba(201,168,76,0.06)" : "var(--surface)",
+        border: selected ? "2px solid var(--gold)" : "1px solid var(--border)",
         borderRadius: 12,
         overflow: "hidden",
         transition: "border-color 0.15s ease, transform 0.15s ease",
         position: "relative",
+        cursor: onSelect ? "pointer" : "default",
       }}
+      onClick={
+        onSelect
+          ? (e) => {
+              e.stopPropagation();
+              onSelect(item.id);
+            }
+          : undefined
+      }
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.borderColor =
-          "var(--gold-dim)";
+        if (!selected)
+          (e.currentTarget as HTMLDivElement).style.borderColor =
+            "var(--gold-dim)";
         (e.currentTarget as HTMLDivElement).style.transform =
           "translateY(-2px)";
       }}
@@ -611,10 +632,12 @@ function ItemCard({
 
 function AddEditModal({
   editItem,
+  activeCollectionId,
   onClose,
   onSaved,
 }: {
   editItem: InventoryItem | null;
+  activeCollectionId: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -695,7 +718,10 @@ function AddEditModal({
           body.serialNumber = serialNumber || null;
         }
         if (itemType === "sealed_product") body.isSealed = isSealed;
-        await api.post("/inventory", body);
+        await api.post("/inventory", {
+          ...body,
+          collection_id: activeCollectionId ?? undefined,
+        });
       } else {
         if (itemType === "graded_card") {
           body.gradingCompany = gradingCompany || null;
@@ -1770,11 +1796,63 @@ export default function InventoryPage() {
   const [openItem, setOpenItem] = useState<InventoryItem | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  const {
+    collections,
+    activeCollectionId,
+    activeCollection,
+    setActiveCollectionId,
+  } = useCollections();
+  const hasMultipleCollections = collections.length > 1;
+  const router = useRouter();
+  const { setPendingAction } = usePendingAction();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const selectedItems = items.filter((item) => selectedIds.has(item.id));
+
+  const buildPendingCards = (items: InventoryItem[]): PendingCard[] =>
+    items.map((item) => ({
+      inventoryId: item.id,
+      cardId: item.card_id,
+      name: item.card?.name ?? item.product?.name ?? "Unknown",
+      number: item.card?.number ?? "",
+      setName: item.card?.sets?.name ?? "",
+      imageSmall: item.card?.image_small ?? item.product?.image_url ?? null,
+      marketPrice: item.marketValue?.marketPrice ?? null,
+      purchasePrice: item.purchase_price,
+      itemType: item.item_type,
+      gradingCompany: item.grading_company,
+      grade: item.grade,
+    }));
+
+  const handleTrade = () => {
+    setPendingAction(buildPendingCards(selectedItems), "trade");
+    router.push(ROUTES.GRADING);
+  };
+
+  const handleSubmit = () => {
+    setPendingAction(buildPendingCards(selectedItems), "submit");
+    router.push(ROUTES.GRADING);
+  };
+
   const load = useCallback(async () => {
     try {
+      const params = activeCollectionId
+        ? `?collectionId=${activeCollectionId}`
+        : "";
       const res = await api.get<{
         data: { items: InventoryItem[]; summary: InventorySummary };
-      }>("/inventory");
+      }>(`/inventory${params}`);
       setItems(res.data.data.items ?? []);
       setSummary(res.data.data.summary ?? null);
     } catch (err) {
@@ -1782,7 +1860,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeCollectionId]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -1830,6 +1908,7 @@ export default function InventoryPage() {
       {(showAddModal || editItem) && (
         <AddEditModal
           editItem={editItem}
+          activeCollectionId={activeCollectionId}
           onClose={() => {
             setShowAddModal(false);
             setEditItem(null);
@@ -1957,7 +2036,9 @@ export default function InventoryPage() {
                 marginBottom: 8,
               }}
             >
-              COLLECTION
+              {activeCollection
+                ? activeCollection.name.toUpperCase()
+                : "ALL COLLECTIONS"}
             </div>
             <h1
               style={{
@@ -1965,36 +2046,177 @@ export default function InventoryPage() {
                 fontWeight: 500,
                 color: "var(--text-primary)",
                 marginBottom: 4,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
               }}
             >
-              Inventory
+              {activeCollection ? (
+                <>
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: activeCollection.color,
+                      display: "inline-block",
+                      flexShrink: 0,
+                    }}
+                  />
+                  {activeCollection.name}
+                </>
+              ) : (
+                "Inventory"
+              )}
             </h1>
             <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-              Track your raw cards, graded cards, and sealed products
+              {activeCollection
+                ? `${summary?.totalItems ?? 0} items · $${(summary?.totalMarketValue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} market value`
+                : "Track your raw cards, graded cards, and sealed products"}
             </p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className='inventory-add-btn'
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Desktop: show full "Manage Collections" label. Mobile: icon only */}
+            <a
+              href='/inventory/collections'
+              className='inventory-manage-btn'
+              style={{
+                padding: "10px 14px",
+                borderRadius: 9,
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                fontSize: 12,
+                fontFamily: "inherit",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>◈</span>
+              <span className='inventory-manage-label'>Manage Collections</span>
+            </a>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className='inventory-add-btn'
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "10px 20px",
+                borderRadius: 9,
+                border: "none",
+                background: "var(--gold)",
+                color: "#0D0E11",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+              Add item
+            </button>
+          </div>
+        </div>
+
+        {/* ── Collection switcher ──────────────────────────────────────────────
+            Always visible. Shows pills for each collection + a + New pill.
+            On mobile: horizontally scrollable. On desktop: wraps.
+        ── */}
+        <div className='inventory-collection-row'>
+          {hasMultipleCollections && (
+            <button
+              onClick={() => setActiveCollectionId(null)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 500,
+                border: `1px solid ${activeCollectionId === null ? "var(--gold)" : "var(--border)"}`,
+                background:
+                  activeCollectionId === null
+                    ? "rgba(201,168,76,0.12)"
+                    : "transparent",
+                color:
+                  activeCollectionId === null
+                    ? "var(--gold)"
+                    : "var(--text-secondary)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                flexShrink: 0,
+              }}
+            >
+              All
+            </button>
+          )}
+          {collections.map((col) => (
+            <button
+              key={col.id}
+              onClick={() => setActiveCollectionId(col.id)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 500,
+                border: `1px solid ${activeCollectionId === col.id ? col.color : "var(--border)"}`,
+                background:
+                  activeCollectionId === col.id
+                    ? `${col.color}20`
+                    : "transparent",
+                color:
+                  activeCollectionId === col.id
+                    ? col.color
+                    : "var(--text-secondary)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexShrink: 0,
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: col.color,
+                  display: "inline-block",
+                }}
+              />
+              {col.name}
+              {col.itemCount > 0 && (
+                <span style={{ fontSize: 10, opacity: 0.65 }}>
+                  {col.itemCount}
+                </span>
+              )}
+            </button>
+          ))}
+          {/* + New Collection pill — always shown */}
+          <a
+            href='/inventory/collections'
             style={{
+              padding: "6px 14px",
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 500,
+              border: "1px dashed var(--border)",
+              background: "transparent",
+              color: "var(--text-dim)",
+              fontFamily: "inherit",
+              textDecoration: "none",
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              padding: "10px 20px",
-              borderRadius: 9,
-              border: "none",
-              background: "var(--gold)",
-              color: "#0D0E11",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              whiteSpace: "nowrap",
+              gap: 4,
+              flexShrink: 0,
             }}
           >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-            Add item
-          </button>
+            + New Collection
+          </a>
         </div>
 
         {/* Summary */}
@@ -2135,7 +2357,9 @@ export default function InventoryPage() {
               }}
             >
               {items.length === 0
-                ? "Add raw cards, graded cards, or sealed products to start tracking your collection"
+                ? activeCollection
+                  ? `No cards in "${activeCollection.name}" yet. Add one with the button above.`
+                  : "Add raw cards, graded cards, or sealed products to start tracking your collection"
                 : "Try adjusting your search or filter"}
             </div>
             {items.length === 0 && (
@@ -2175,11 +2399,128 @@ export default function InventoryPage() {
                 onEdit={setEditItem}
                 onDelete={(id) => setDeleteConfirm(id)}
                 onOpen={setOpenItem}
+                selected={selectedIds.has(item.id)}
+                onSelect={toggleSelect}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* ── Floating selection action bar ── */}
+      {selectedIds.size > 0 && (
+        <div
+          className='inventory-float-bar'
+          style={{
+            position: "fixed",
+            bottom: "calc(var(--mobile-nav-height, 0px) + 16px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 60,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
+            backdropFilter: "blur(8px)",
+            minWidth: 280,
+            maxWidth: "90vw",
+          }}
+        >
+          {/* Count badge */}
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              background: "var(--gold)",
+              color: "#0D0E11",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+              fontWeight: 700,
+              fontFamily: "DM Mono, monospace",
+              flexShrink: 0,
+            }}
+          >
+            {selectedIds.size}
+          </div>
+
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text-secondary)",
+              flex: 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            card{selectedIds.size !== 1 ? "s" : ""} selected
+          </div>
+
+          {/* Submit for grading — any count */}
+          <button
+            onClick={handleSubmit}
+            title='Submit selected cards for grading'
+            style={{
+              padding: "8px 14px",
+              borderRadius: 10,
+              border: "1px solid rgba(59,130,246,0.4)",
+              background: "rgba(59,130,246,0.1)",
+              color: "#3B82F6",
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            Submit for Grading
+          </button>
+
+          {/* Trade Calculator */}
+          <button
+            onClick={handleTrade}
+            title='Send to Trade Calculator'
+            style={{
+              padding: "8px 14px",
+              borderRadius: 10,
+              border: "none",
+              background: "var(--gold)",
+              color: "#0D0E11",
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            ⇄ Trade
+          </button>
+
+          {/* Clear */}
+          <button
+            onClick={clearSelection}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--text-dim)",
+              cursor: "pointer",
+              fontSize: 16,
+              padding: "4px",
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </>
   );
 }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
@@ -7,6 +8,11 @@ import Image from "next/image";
 import { createClient } from "../../lib/supabase";
 import { ROUTES } from "../../constants/routes";
 import GlobalSearch from "@/components/layout/GlobalSearch";
+import {
+  CollectionProvider,
+  useCollections,
+} from "../../context/CollectionContext";
+import { PendingActionProvider } from "../../context/PendingActionContext";
 
 // ─── Desktop sidebar nav — ordered to match mobile tab order ──────────────────
 const NAV_ITEMS = [
@@ -252,6 +258,307 @@ function MobileDashboardSearch({ pathname }: { pathname: string }) {
   );
 }
 
+// ─── Collections sidebar section ──────────────────────────────────────────────
+
+// ─── Inventory nav item with expandable collections sub-nav ───────────────────
+function InventoryNavItem({ pathname }: { pathname: string }) {
+  const router = useRouter();
+  const {
+    collections,
+    activeCollectionId,
+    setActiveCollectionId,
+    createCollection,
+  } = useCollections();
+
+  const isOnInventory = pathname.startsWith(ROUTES.INVENTORY);
+  const isActive = isOnInventory;
+
+  // Show sub-nav when on any inventory path
+  const showSubs = isOnInventory;
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await createCollection({ name: newName.trim() });
+      setNewName("");
+      setShowCreate(false);
+    } catch (err: any) {
+      setCreateError(err?.message ?? "Failed to create");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div>
+      {/* Main Inventory row */}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 2 }}>
+        <Link
+          href={ROUTES.INVENTORY}
+          onClick={() => setActiveCollectionId(null)}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "9px 10px",
+            borderRadius: 8,
+            fontSize: 13,
+            fontWeight: isActive ? 500 : 400,
+            color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+            background:
+              isActive && !activeCollectionId
+                ? "var(--surface-2)"
+                : "transparent",
+            textDecoration: "none",
+            transition: "background 0.15s ease",
+            borderLeft: `2px solid ${isActive && !activeCollectionId ? "var(--gold)" : "transparent"}`,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 15,
+              color:
+                isActive && !activeCollectionId
+                  ? "var(--gold)"
+                  : "var(--text-dim)",
+              width: 18,
+              textAlign: "center",
+              flexShrink: 0,
+            }}
+          >
+            ☰
+          </span>
+          Inventory
+        </Link>
+        {/* + button to create collection */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowCreate(!showCreate);
+            setCreateError(null);
+          }}
+          title='New collection'
+          style={{
+            background: "transparent",
+            border: "none",
+            color: showCreate ? "var(--gold)" : "var(--text-dim)",
+            cursor: "pointer",
+            fontSize: 18,
+            padding: "4px 8px",
+            borderRadius: 6,
+            lineHeight: 1,
+            fontWeight: 300,
+            flexShrink: 0,
+          }}
+        >
+          +
+        </button>
+      </div>
+
+      {/* Inline create form — appears below Inventory row */}
+      {showCreate && (
+        <div style={{ padding: "4px 10px 8px 28px" }}>
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleCreate();
+              if (e.key === "Escape") {
+                setShowCreate(false);
+                setNewName("");
+              }
+            }}
+            placeholder='Collection name…'
+            autoFocus
+            style={{
+              width: "100%",
+              background: "var(--surface-2)",
+              border: "1px solid var(--gold)",
+              borderRadius: 7,
+              padding: "6px 10px",
+              fontSize: 12,
+              color: "var(--text-primary)",
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+          />
+          {createError && (
+            <div style={{ fontSize: 10, color: "var(--red)", marginTop: 3 }}>
+              {createError}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
+            <button
+              onClick={handleCreate}
+              disabled={creating || !newName.trim()}
+              style={{
+                flex: 1,
+                padding: "5px 0",
+                borderRadius: 6,
+                border: "none",
+                background: "var(--gold)",
+                color: "#0D0E11",
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: creating ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {creating ? "…" : "Create"}
+            </button>
+            <button
+              onClick={() => {
+                setShowCreate(false);
+                setNewName("");
+                setCreateError(null);
+              }}
+              style={{
+                padding: "5px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                fontSize: 11,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Collections sub-nav — only when on inventory path */}
+      {showSubs && collections.length > 0 && (
+        <div style={{ paddingLeft: 18, marginBottom: 4 }}>
+          {/* All Collections — only show when 2+ exist */}
+          {collections.length > 1 && (
+            <button
+              onClick={() => {
+                setActiveCollectionId(null);
+                router.push(ROUTES.INVENTORY);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: 7,
+                background:
+                  activeCollectionId === null
+                    ? "var(--surface-2)"
+                    : "transparent",
+                border: "none",
+                borderLeft: `2px solid ${activeCollectionId === null ? "var(--gold)" : "transparent"}`,
+                color:
+                  activeCollectionId === null
+                    ? "var(--text-primary)"
+                    : "var(--text-secondary)",
+                fontSize: 12,
+                fontWeight: activeCollectionId === null ? 500 : 400,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+                marginBottom: 1,
+                transition: "background 0.15s ease",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  color:
+                    activeCollectionId === null
+                      ? "var(--gold)"
+                      : "var(--text-dim)",
+                }}
+              >
+                ◎
+              </span>
+              All Collections
+            </button>
+          )}
+          {/* Individual collections */}
+          {collections.map((col) => {
+            const isCurrent = activeCollectionId === col.id;
+            return (
+              <button
+                key={col.id}
+                onClick={() => {
+                  setActiveCollectionId(col.id);
+                  router.push(ROUTES.INVENTORY);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  width: "100%",
+                  padding: "6px 10px",
+                  borderRadius: 7,
+                  background: isCurrent ? "var(--surface-2)" : "transparent",
+                  border: "none",
+                  borderLeft: `2px solid ${isCurrent ? col.color : "transparent"}`,
+                  color: isCurrent
+                    ? "var(--text-primary)"
+                    : "var(--text-secondary)",
+                  fontSize: 12,
+                  fontWeight: isCurrent ? 500 : 400,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  textAlign: "left",
+                  marginBottom: 1,
+                  transition: "background 0.15s ease",
+                }}
+              >
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    background: col.color,
+                    flexShrink: 0,
+                    display: "inline-block",
+                  }}
+                />
+                <span
+                  style={{
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {col.name}
+                </span>
+                {col.itemCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                    }}
+                  >
+                    {col.itemCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── App layout ───────────────────────────────────────────────────────────────
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -366,217 +673,228 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        background: "var(--charcoal)",
-      }}
-    >
-      {/* Desktop sidebar — hidden on mobile via .desktop-sidebar CSS class */}
-      <aside className='desktop-sidebar'>
-        {/* Logo */}
+    <CollectionProvider>
+      <PendingActionProvider>
         <div
           style={{
-            padding: "20px 20px 18px",
-            borderBottom: "1px solid var(--border)",
-            flexShrink: 0,
+            display: "flex",
+            minHeight: "100vh",
+            background: "var(--charcoal)",
           }}
         >
-          <Image
-            src='/tp-logo-gold-white.png'
-            alt='TruePoint TCG'
-            width={130}
-            height={30}
-            style={{ objectFit: "contain", objectPosition: "left" }}
-            priority
-          />
-        </div>
-
-        {/* Search */}
-        <div
-          style={{
-            padding: "12px 0 4px",
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <GlobalSearch />
-        </div>
-
-        {/* Primary nav */}
-        <nav style={{ padding: "12px 10px", flex: 1, overflow: "auto" }}>
-          <div
-            style={{
-              fontSize: 10,
-              color: "var(--text-dim)",
-              letterSpacing: "0.08em",
-              fontFamily: "DM Mono, monospace",
-              padding: "6px 10px 8px",
-            }}
-          >
-            NAVIGATION
-          </div>
-
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-              pathname={pathname}
-              exact={item.href === ROUTES.DASHBOARD}
-            />
-          ))}
-
-          <div
-            style={{
-              height: 1,
-              background: "var(--border)",
-              margin: "12px 10px",
-            }}
-          />
-
-          {BOTTOM_ITEMS.map((item) => (
-            <NavLink
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-              pathname={pathname}
-            />
-          ))}
-
-          {isAdmin && (
-            <NavLink
-              href={ROUTES.ADMIN}
-              label='Admin'
-              icon='⬡'
-              pathname={pathname}
-            />
-          )}
-        </nav>
-
-        {/* User footer */}
-        <div
-          style={{
-            borderTop: "1px solid var(--border)",
-            padding: "14px 14px",
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 10,
-            }}
-          >
+          {/* Desktop sidebar — hidden on mobile via .desktop-sidebar CSS class */}
+          <aside className='desktop-sidebar'>
+            {/* Logo */}
             <div
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: "rgba(201,168,76,0.2)",
-                border: "1px solid rgba(201,168,76,0.3)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                padding: "20px 20px 18px",
+                borderBottom: "1px solid var(--border)",
                 flexShrink: 0,
               }}
             >
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--gold)",
-                  fontFamily: "DM Mono, monospace",
-                }}
-              >
-                {(username ?? userEmail ?? "U").charAt(0).toUpperCase()}
-              </span>
+              <Image
+                src='/tp-logo-gold-white.png'
+                alt='TruePoint TCG'
+                width={130}
+                height={30}
+                style={{ objectFit: "contain", objectPosition: "left" }}
+                priority
+              />
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+
+            {/* Search */}
+            <div
+              style={{
+                padding: "12px 0 4px",
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              <GlobalSearch />
+            </div>
+
+            {/* Primary nav */}
+            <nav style={{ padding: "12px 10px", flex: 1, overflow: "auto" }}>
               <div
                 style={{
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "var(--text-primary)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {username ? `@${username}` : "My Account"}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   color: "var(--text-dim)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  letterSpacing: "0.08em",
+                  fontFamily: "DM Mono, monospace",
+                  padding: "6px 10px 8px",
                 }}
               >
-                {userEmail}
+                NAVIGATION
               </div>
+
+              {NAV_ITEMS.map((item) => {
+                if (item.href === ROUTES.INVENTORY) {
+                  return (
+                    <InventoryNavItem key={item.href} pathname={pathname} />
+                  );
+                }
+                return (
+                  <NavLink
+                    key={item.href}
+                    href={item.href}
+                    label={item.label}
+                    icon={item.icon}
+                    pathname={pathname}
+                    exact={item.href === ROUTES.DASHBOARD}
+                  />
+                );
+              })}
+
+              <div
+                style={{
+                  height: 1,
+                  background: "var(--border)",
+                  margin: "12px 10px",
+                }}
+              />
+
+              {BOTTOM_ITEMS.map((item) => (
+                <NavLink
+                  key={item.href}
+                  href={item.href}
+                  label={item.label}
+                  icon={item.icon}
+                  pathname={pathname}
+                />
+              ))}
+
+              {isAdmin && (
+                <NavLink
+                  href={ROUTES.ADMIN}
+                  label='Admin'
+                  icon='⬡'
+                  pathname={pathname}
+                />
+              )}
+            </nav>
+
+            {/* User footer */}
+            <div
+              style={{
+                borderTop: "1px solid var(--border)",
+                padding: "14px 14px",
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "rgba(201,168,76,0.2)",
+                    border: "1px solid rgba(201,168,76,0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "var(--gold)",
+                      fontFamily: "DM Mono, monospace",
+                    }}
+                  >
+                    {(username ?? userEmail ?? "U").charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {username ? `@${username}` : "My Account"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-dim)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {userEmail}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleSignOut}
+                style={{
+                  width: "100%",
+                  padding: "7px 12px",
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  background: "transparent",
+                  color: "var(--text-dim)",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "border-color 0.15s ease, color 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "var(--red)";
+                  e.currentTarget.style.color = "var(--red)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border)";
+                  e.currentTarget.style.color = "var(--text-dim)";
+                }}
+              >
+                <span style={{ fontSize: 12 }}>↪</span>
+                Sign out
+              </button>
             </div>
-          </div>
-          <button
-            onClick={handleSignOut}
-            style={{
-              width: "100%",
-              padding: "7px 12px",
-              borderRadius: 6,
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--text-dim)",
-              fontSize: 12,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              transition: "border-color 0.15s ease, color 0.15s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "var(--red)";
-              e.currentTarget.style.color = "var(--red)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "var(--border)";
-              e.currentTarget.style.color = "var(--text-dim)";
-            }}
-          >
-            <span style={{ fontSize: 12 }}>↪</span>
-            Sign out
-          </button>
+          </aside>
+
+          {/* Main content area */}
+          <main className='app-main'>
+            {/* Mobile-only header with logo */}
+            <header className='mobile-header'>
+              <Image
+                src='/tp-logo-gold-white.png'
+                alt='TruePoint TCG'
+                width={110}
+                height={26}
+                style={{ objectFit: "contain" }}
+                priority
+              />
+            </header>
+
+            {/* Page content */}
+            <div className='app-content'>{children}</div>
+
+            {/* Mobile sticky search — visible only on /dashboard */}
+            <MobileDashboardSearch pathname={pathname} />
+          </main>
+
+          {/* Mobile bottom nav — hidden on desktop */}
+          <MobileBottomNav pathname={pathname} />
         </div>
-      </aside>
-
-      {/* Main content area */}
-      <main className='app-main'>
-        {/* Mobile-only header with logo */}
-        <header className='mobile-header'>
-          <Image
-            src='/tp-logo-gold-white.png'
-            alt='TruePoint TCG'
-            width={110}
-            height={26}
-            style={{ objectFit: "contain" }}
-            priority
-          />
-        </header>
-
-        {/* Page content */}
-        <div className='app-content'>{children}</div>
-
-        {/* Mobile sticky search — visible only on /dashboard */}
-        <MobileDashboardSearch pathname={pathname} />
-      </main>
-
-      {/* Mobile bottom nav — hidden on desktop */}
-      <MobileBottomNav pathname={pathname} />
-    </div>
+      </PendingActionProvider>
+    </CollectionProvider>
   );
 }

@@ -475,3 +475,179 @@ body {
     grid-column: 1 / 2 !important; /* reset the 2-column span */
   }
 }
+
+/* ─── Inventory: collection row + header buttons ─────────────────────────────── */
+
+/* Collection pill row — wraps on desktop, horizontal scroll on mobile */
+.inventory-collection-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 767px) {
+  /* Horizontal scroll strip on mobile */
+  .inventory-collection-row {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .inventory-collection-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide "Manage Collections" label on mobile — show icon only */
+  .inventory-manage-label {
+    display: none;
+  }
+
+  /* Manage button becomes a compact icon button on mobile */
+  .inventory-manage-btn {
+    padding: 10px 12px !important;
+  }
+}
+
+/* ─── Trade Calculator ───────────────────────────────────────────────────────── */
+
+.trade-sides-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 767px) {
+  .trade-sides-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ─── Inventory floating action bar — clear mobile bottom nav ───────────────── */
+@media (max-width: 767px) {
+  /* Push the bar above the bottom nav + optional search bar */
+  .inventory-float-bar {
+    bottom: calc(
+      var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 12px
+    ) !important;
+  }
+}
+
+/* ─── Landing page mobile responsive ─────────────────────────────────────────
+   All rules ≤767px. Desktop is completely untouched.
+── */
+
+@media (max-width: 767px) {
+  /* ── Nav ────────────────────────────────────────────────────────────────── */
+  /* Hide nav text links, keep logo + sign in + see pricing */
+  .landing-nav-right a[href^="#"] {
+    display: none !important;
+  }
+  /* Compress button gap */
+  .landing-nav-right {
+    gap: 10px !important;
+  }
+  /* Shrink buttons */
+  .landing-nav-right .btn-secondary,
+  .landing-nav-right .btn-primary {
+    padding: 7px 14px !important;
+    font-size: 12px !important;
+  }
+
+  /* ── Hero ───────────────────────────────────────────────────────────────── */
+  /* Hide the absolute stat cards — too cramped on mobile */
+  .landing-hero-cards {
+    display: none !important;
+  }
+  /* Reduce hero padding */
+  section[style*="minHeight"] > div {
+    padding: 48px 20px 60px !important;
+  }
+  /* Stack hero buttons */
+  .landing-hero-btns {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  .landing-hero-btns a {
+    text-align: center !important;
+    padding: 14px 24px !important;
+  }
+
+  /* ── Metrics strip ──────────────────────────────────────────────────────── */
+  .landing-metrics-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  /* Remove right borders that look off in 2-col */
+  .landing-metrics-grid > div {
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    padding: 24px 16px !important;
+  }
+
+  /* ── Features ───────────────────────────────────────────────────────────── */
+  .landing-section {
+    padding: 60px 20px !important;
+  }
+  .landing-feature-row {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+    padding: 28px 20px !important;
+  }
+
+  /* ── Collection types / 3-col grids → 1 col ────────────────────────────── */
+  .landing-3col-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Stats/tools + roadmap 4-col → 2-col ───────────────────────────────── */
+  .landing-4col-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* ── News 2-col → 1 col ────────────────────────────────────────────────── */
+  .landing-2col-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Pricing 3-col → 1 col ─────────────────────────────────────────────── */
+  .landing-pricing-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .landing-pricing-grid > div {
+    padding: 28px 24px !important;
+  }
+
+  /* ── CTA buttons ────────────────────────────────────────────────────────── */
+  .landing-cta-btns {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+  .landing-cta-btns a {
+    width: 100% !important;
+    max-width: 320px !important;
+    text-align: center !important;
+    padding: 14px 24px !important;
+  }
+
+  /* ── Footer ─────────────────────────────────────────────────────────────── */
+  .landing-footer-inner {
+    flex-direction: column !important;
+    gap: 20px !important;
+    text-align: center !important;
+  }
+  .landing-footer-inner > div:last-child {
+    justify-content: center !important;
+  }
+
+  /* ── General section padding reduction ─────────────────────────────────── */
+  section[id="collection"],
+  section[id="pricing"],
+  section[id="roadmap"] {
+    padding: 60px 20px !important;
+  }
+  section[style*='padding: "120px 24px"'] {
+    padding: 60px 20px !important;
+  }
+}
