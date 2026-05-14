@@ -1346,6 +1346,23 @@ function GradingArbitragePage() {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface AIReportSummary {
+  id: string;
+  status: string; // 'processing' | 'completed' | 'failed'
+  overallScore: number | null;
+  centering: number;
+  corners: number;
+  edges: number;
+  surface: number;
+  confidence: number;
+  recommendation: string; // 'grade' | 'skip' | 'borderline'
+  recommendationReason: string | null;
+  predictions: any; // { psa, bgs, cgc, tag }
+  frontImage: string | null;
+  backImage: string | null;
+  createdAt: string;
+}
+
 interface SubmissionCardLine {
   id: string;
   submissionId: string;
@@ -1363,6 +1380,7 @@ interface SubmissionCardLine {
   certNumber: string | null;
   gradedValue: number | null;
   aiGradingReportId: string | null;
+  aiReport: AIReportSummary | null;
   position: number;
   notes: string | null;
 }
@@ -1386,6 +1404,7 @@ interface Submission {
   createdAt: string;
   updatedAt: string;
   cardCount: number;
+  totalGradedValue: number | null;
   cards?: SubmissionCardLine[];
   daysInTransit: number;
   roi: number | null;
@@ -1397,6 +1416,8 @@ interface Summary {
   returned: number;
   totalSpentOnGrading: number;
   totalReturnedValue: number;
+  netProfitLoss1Year: number;
+  valuedCardCount: number;
   totalROI: number | null;
   byStatus: Record<string, number>;
   byCompany: Record<string, number>;
@@ -2154,10 +2175,14 @@ function AdvanceModal({
 function SubmissionAIGradingModal({
   cardName,
   setName,
+  submissionCardId,
+  onReportCreated,
   onClose,
 }: {
   cardName: string;
   setName: string;
+  submissionCardId?: string;
+  onReportCreated?: () => void;
   onClose: () => void;
 }) {
   const [frontFile, setFrontFile] = useState<File | null>(null);
@@ -2208,12 +2233,22 @@ function SubmissionAIGradingModal({
     try {
       await api.post(
         "/grading/ai-analyze",
-        { frontBase64, frontMime, backBase64, backMime, cardName, setName },
+        {
+          frontBase64,
+          frontMime,
+          backBase64,
+          backMime,
+          cardName,
+          setName,
+          submissionCardId,
+        },
         { timeout: 120000 },
       );
       setDone(true);
-    } catch (err: any) {
-      setError(err?.message ?? "Analysis failed. Please try again.");
+      onReportCreated?.();
+    } catch (err) {
+      console.error("[AI Analysis] failed:", err);
+      setError("Analysis failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -2456,13 +2491,794 @@ function SubmissionAIGradingModal({
   );
 }
 
+// ─── Submission detail modal ──────────────────────────────────────────────────
+// Click a submission row to open this: envelope details, card-by-card list,
+// per-card AI grading (predicts grade so users don't grade blindly), and
+// per-card grade-received entry once the envelope is marked Returned.
+
+function SubmissionDetailModal({
+  submissionId,
+  onClose,
+  onChanged,
+}: {
+  submissionId: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [submission, setSubmission] = useState<Submission | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [aiGradingCard, setAiGradingCard] = useState<SubmissionCardLine | null>(
+    null,
+  );
+  // Per-card inline edit state for grade entry (keyed by submission card id)
+  const [gradeForm, setGradeForm] = useState<
+    Record<
+      string,
+      { gradeReceived: string; certNumber: string; gradedValue: string }
+    >
+  >({});
+  const [savingCardId, setSavingCardId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.get<{ data: Submission }>(
+        `/grading/submissions/${submissionId}`,
+      );
+      setSubmission(res.data.data);
+    } catch (err) {
+      console.error("[SubmissionDetail] load failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [submissionId]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [load]);
+
+  const isReturned = submission?.status === "returned";
+
+  const handleSaveGrade = async (card: SubmissionCardLine) => {
+    const form = gradeForm[card.id] ?? {
+      gradeReceived: card.gradeReceived ?? "",
+      certNumber: card.certNumber ?? "",
+      gradedValue: card.gradedValue?.toString() ?? "",
+    };
+    setSavingCardId(card.id);
+    try {
+      await api.patch(`/grading/submission-cards/${card.id}`, {
+        gradeReceived: form.gradeReceived || undefined,
+        certNumber: form.certNumber || undefined,
+        gradedValue: form.gradedValue
+          ? parseFloat(form.gradedValue)
+          : undefined,
+      });
+      await load();
+      onChanged();
+    } catch (err) {
+      console.error("[SubmissionDetail] save grade failed:", err);
+    } finally {
+      setSavingCardId(null);
+    }
+  };
+
+  const updateGradeForm = (
+    cardId: string,
+    field: "gradeReceived" | "certNumber" | "gradedValue",
+    value: string,
+  ) => {
+    setGradeForm((p) => {
+      const prev = p[cardId] ?? {
+        gradeReceived: "",
+        certNumber: "",
+        gradedValue: "",
+      };
+      return {
+        ...p,
+        [cardId]: { ...prev, [field]: value },
+      };
+    });
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        zIndex: 250,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          width: "100%",
+          maxWidth: 760,
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "18px 22px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "var(--gold)",
+                fontFamily: "DM Mono, monospace",
+                letterSpacing: "0.08em",
+                marginBottom: 2,
+              }}
+            >
+              SUBMISSION
+            </div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 500,
+                color: "var(--text-primary)",
+              }}
+            >
+              {submission
+                ? `${submission.company} · ${submission.cardCount} card${submission.cardCount === 1 ? "" : "s"}`
+                : "Loading…"}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "var(--text-dim)",
+              fontSize: 20,
+              cursor: "pointer",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Body */}
+        <div
+          style={{
+            padding: 22,
+            overflowY: "auto",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+          }}
+        >
+          {loading && (
+            <div
+              style={{
+                textAlign: "center",
+                padding: 40,
+                color: "var(--text-dim)",
+                fontSize: 13,
+              }}
+            >
+              Loading…
+            </div>
+          )}
+
+          {!loading && submission && (
+            <>
+              {/* Status pipeline */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "var(--text-dim)",
+                    fontFamily: "DM Mono, monospace",
+                  }}
+                >
+                  STATUS
+                </span>
+                <StatusPipeline status={submission.status} />
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: STATUS_COLORS[submission.status],
+                    fontFamily: "DM Mono, monospace",
+                    fontWeight: 500,
+                  }}
+                >
+                  {STATUS_LABELS[submission.status]}
+                </span>
+              </div>
+
+              {/* Envelope details */}
+              <div
+                style={{
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: "14px 16px",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px 24px",
+                }}
+              >
+                {[
+                  { label: "Company", value: submission.company },
+                  {
+                    label: "Service Tier",
+                    value: submission.serviceTier ?? "—",
+                  },
+                  {
+                    label: "Submission #",
+                    value: submission.submissionNumber ?? "—",
+                  },
+                  {
+                    label: "Tracking Out",
+                    value: submission.trackingToGrader ?? "—",
+                  },
+                  {
+                    label: "Tracking Back",
+                    value: submission.trackingFromGrader ?? "—",
+                  },
+                  {
+                    label: "Submitted",
+                    value: submission.submittedAt
+                      ? fmtDate(submission.submittedAt)
+                      : "—",
+                  },
+                  {
+                    label: "Returned",
+                    value: submission.returnedAt
+                      ? `${fmtDate(submission.returnedAt)} · ${submission.daysInTransit}d`
+                      : "—",
+                  },
+                  {
+                    label: "Total Cost",
+                    value: fmt(submission.totalCost ?? 0),
+                  },
+                  {
+                    label: "Declared Value",
+                    value: fmt(submission.declaredValueTotal ?? 0),
+                  },
+                  {
+                    label: "Total Value",
+                    value:
+                      submission.totalGradedValue !== null
+                        ? fmt(submission.totalGradedValue)
+                        : "—",
+                  },
+                ].map((d) => (
+                  <div key={d.label}>
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: "var(--text-dim)",
+                        fontFamily: "DM Mono, monospace",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {d.label.toUpperCase()}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text-primary)",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      {d.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Cards section */}
+              <div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--text-dim)",
+                    fontFamily: "DM Mono, monospace",
+                    marginBottom: 10,
+                    letterSpacing: "0.08em",
+                  }}
+                >
+                  CARDS ({submission.cardCount})
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
+                  {(submission.cards ?? []).map((card) => (
+                    <SubmissionCardRow
+                      key={card.id}
+                      card={card}
+                      submissionStatus={submission.status}
+                      isReturned={!!isReturned}
+                      onAIGrade={() => setAiGradingCard(card)}
+                      gradeForm={gradeForm[card.id]}
+                      onGradeFieldChange={(field, value) =>
+                        updateGradeForm(card.id, field, value)
+                      }
+                      onSaveGrade={() => handleSaveGrade(card)}
+                      saving={savingCardId === card.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Nested AI grading modal — opens when user clicks ✦ AI Grade on a card */}
+      {aiGradingCard && (
+        <SubmissionAIGradingModal
+          cardName={aiGradingCard.cardName}
+          setName={aiGradingCard.cardSet ?? ""}
+          submissionCardId={aiGradingCard.id}
+          onReportCreated={() => {
+            // Refresh detail so the pending AI report appears on the card row
+            load();
+            onChanged();
+          }}
+          onClose={() => setAiGradingCard(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Card row inside the submission detail modal.
+// Renders: thumbnail, name, declared value, optional AI report summary,
+// AI Grade button, and (when submission is Returned) inline grade entry.
+
+function SubmissionCardRow({
+  card,
+  submissionStatus,
+  isReturned,
+  onAIGrade,
+  gradeForm,
+  onGradeFieldChange,
+  onSaveGrade,
+  saving,
+}: {
+  card: SubmissionCardLine;
+  submissionStatus: string;
+  isReturned: boolean;
+  onAIGrade: () => void;
+  gradeForm?: {
+    gradeReceived: string;
+    certNumber: string;
+    gradedValue: string;
+  };
+  onGradeFieldChange: (
+    field: "gradeReceived" | "certNumber" | "gradedValue",
+    value: string,
+  ) => void;
+  onSaveGrade: () => void;
+  saving: boolean;
+}) {
+  const report = card.aiReport;
+  const recColor =
+    report?.recommendation === "grade"
+      ? "#10B981"
+      : report?.recommendation === "borderline"
+        ? "#F59E0B"
+        : "#EF4444";
+  const recLabel =
+    report?.recommendation === "grade"
+      ? "Submit"
+      : report?.recommendation === "borderline"
+        ? "Borderline"
+        : "Skip";
+
+  const gradeValue = gradeForm?.gradeReceived ?? card.gradeReceived ?? "";
+  const certValue = gradeForm?.certNumber ?? card.certNumber ?? "";
+  const valueValue =
+    gradeForm?.gradedValue ?? card.gradedValue?.toString() ?? "";
+
+  // Suppress unused warning - we may want this later for status-aware UI
+  void submissionStatus;
+
+  return (
+    <div
+      style={{
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: 12,
+      }}
+    >
+      {/* Header row: image + name + declared value */}
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+        {card.cardImage && (
+          <img
+            src={card.cardImage}
+            alt={card.cardName}
+            style={{
+              width: 48,
+              height: 66,
+              borderRadius: 4,
+              objectFit: "cover",
+              flexShrink: 0,
+            }}
+          />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--text-primary)",
+              marginBottom: 2,
+            }}
+          >
+            {card.cardName}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+            }}
+          >
+            {card.cardSet}
+            {card.cardNumber ? ` · #${card.cardNumber}` : ""}
+          </div>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div
+            style={{
+              fontSize: 9,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              marginBottom: 2,
+            }}
+          >
+            DECLARED
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--gold)",
+              fontFamily: "DM Mono, monospace",
+            }}
+          >
+            {fmt(card.declaredValue ?? 0)}
+          </div>
+        </div>
+      </div>
+
+      {/* AI report summary, if exists */}
+      {report && (
+        <div
+          style={{
+            marginTop: 10,
+            background: "rgba(201,168,76,0.04)",
+            border: "1px solid rgba(201,168,76,0.15)",
+            borderRadius: 8,
+            padding: "10px 12px",
+          }}
+        >
+          {report.status === "processing" ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 11,
+                color: "var(--text-dim)",
+              }}
+            >
+              <span style={{ color: "var(--gold)" }}>✦</span>
+              AI report is processing — check back in a minute.
+            </div>
+          ) : report.status === "failed" ? (
+            <div style={{ fontSize: 11, color: "#EF4444" }}>
+              ✦ Analysis failed. Try again from the card.
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 6,
+                  flexWrap: "wrap",
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "var(--gold)",
+                      fontFamily: "DM Mono, monospace",
+                      fontWeight: 600,
+                    }}
+                  >
+                    ✦ AI SCORE {report.overallScore?.toFixed(1) ?? "—"}/10
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                    }}
+                  >
+                    {report.confidence}% confidence
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: recColor,
+                    fontFamily: "DM Mono, monospace",
+                    fontWeight: 600,
+                    padding: "2px 8px",
+                    borderRadius: 10,
+                    background: `${recColor}15`,
+                    border: `1px solid ${recColor}40`,
+                  }}
+                >
+                  {recLabel.toUpperCase()}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--text-dim)",
+                  fontFamily: "DM Mono, monospace",
+                  marginBottom: 6,
+                }}
+              >
+                C {report.centering.toFixed(1)} · Cn {report.corners.toFixed(1)}{" "}
+                · Ed {report.edges.toFixed(1)} · Sf {report.surface.toFixed(1)}
+              </div>
+              {report.predictions?.psa?.grade !== undefined && (
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--text-secondary)",
+                    fontFamily: "DM Mono, monospace",
+                  }}
+                >
+                  Predicted: PSA {report.predictions.psa.grade}
+                  {report.predictions?.bgs?.label
+                    ? ` · BGS ${report.predictions.bgs.label}`
+                    : ""}
+                  {report.predictions?.cgc?.isPristine ? " · CGC Pristine" : ""}
+                </div>
+              )}
+              {report.recommendationReason && (
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--text-dim)",
+                    marginTop: 6,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {report.recommendationReason}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Grade entry — inline form when submission is Returned, read-only otherwise */}
+      {isReturned ? (
+        <div
+          style={{
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              marginBottom: 8,
+              letterSpacing: "0.08em",
+            }}
+          >
+            GRADE RECEIVED
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "100px 1fr 120px auto",
+              gap: 8,
+              alignItems: "end",
+            }}
+          >
+            <input
+              value={gradeValue}
+              onChange={(e) =>
+                onGradeFieldChange("gradeReceived", e.target.value)
+              }
+              placeholder='9.5'
+              style={detailInputStyle}
+            />
+            <input
+              value={certValue}
+              onChange={(e) => onGradeFieldChange("certNumber", e.target.value)}
+              placeholder='Cert #'
+              style={detailInputStyle}
+            />
+            <input
+              type='number'
+              value={valueValue}
+              onChange={(e) =>
+                onGradeFieldChange("gradedValue", e.target.value)
+              }
+              placeholder='Value $'
+              style={detailInputStyle}
+            />
+            <button
+              onClick={onSaveGrade}
+              disabled={saving}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid rgba(16,185,129,0.4)",
+                background: "rgba(16,185,129,0.12)",
+                color: "#10B981",
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: saving ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+                opacity: saving ? 0.6 : 1,
+              }}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        (card.gradeReceived || card.certNumber || card.gradedValue) && (
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: "1px solid var(--border)",
+              display: "flex",
+              gap: 18,
+              fontSize: 11,
+              color: "var(--text-dim)",
+              flexWrap: "wrap",
+            }}
+          >
+            {card.gradeReceived && (
+              <span>
+                Grade:{" "}
+                <span
+                  style={{
+                    color: "#10B981",
+                    fontFamily: "DM Mono, monospace",
+                  }}
+                >
+                  {card.gradeReceived}
+                </span>
+              </span>
+            )}
+            {card.certNumber && (
+              <span>
+                Cert:{" "}
+                <span
+                  style={{
+                    color: "var(--gold)",
+                    fontFamily: "DM Mono, monospace",
+                  }}
+                >
+                  {card.certNumber}
+                </span>
+              </span>
+            )}
+            {card.gradedValue && (
+              <span>
+                Value:{" "}
+                <span
+                  style={{
+                    color: "var(--gold)",
+                    fontFamily: "DM Mono, monospace",
+                  }}
+                >
+                  {fmt(card.gradedValue)}
+                </span>
+              </span>
+            )}
+          </div>
+        )
+      )}
+
+      {/* Action buttons */}
+      <div
+        style={{
+          marginTop: 10,
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          onClick={onAIGrade}
+          style={{
+            padding: "7px 12px",
+            borderRadius: 8,
+            border: "1px solid rgba(201,168,76,0.3)",
+            background: "rgba(201,168,76,0.08)",
+            color: "var(--gold)",
+            fontSize: 11,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          ✦ {report ? "Re-grade with AI" : "AI Grade"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const detailInputStyle: React.CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  padding: "6px 10px",
+  fontSize: 12,
+  color: "var(--text-primary)",
+  fontFamily: "DM Mono, monospace",
+  outline: "none",
+  boxSizing: "border-box",
+  width: "100%",
+};
+
 function GradingSubmissionsPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<string>("active");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showNew, setShowNew] = useState(false);
   const [advancing, setAdvancing] = useState<Submission | null>(null);
+  const [detailSubId, setDetailSubId] = useState<string | null>(null);
   const [pendingSubmitCards, setPendingSubmitCards] = useState<
     {
       inventoryId?: string;
@@ -2509,7 +3325,10 @@ function GradingSubmissionsPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    const t = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(t);
   }, [load]);
 
   const filtered = submissions.filter((s) => {
@@ -2596,12 +3415,20 @@ function GradingSubmissionsPage() {
             },
             { label: "RETURNED", value: summary.returned, color: "#10B981" },
             {
-              label: "GRADING COSTS",
-              value: fmt(summary.totalSpentOnGrading),
-              color: "#EF4444",
+              label: "NET P/L (1Y)",
+              value:
+                summary.valuedCardCount > 0
+                  ? `${summary.netProfitLoss1Year >= 0 ? "+" : "-"}${fmt(Math.abs(summary.netProfitLoss1Year))}`
+                  : "—",
+              color:
+                summary.valuedCardCount === 0
+                  ? "var(--text-dim)"
+                  : summary.netProfitLoss1Year >= 0
+                    ? "#10B981"
+                    : "#EF4444",
             },
             {
-              label: "TOTAL ROI",
+              label: "ROI (1Y)",
               value:
                 summary.totalROI !== null
                   ? `${summary.totalROI >= 0 ? "+" : ""}${summary.totalROI.toFixed(0)}%`
@@ -2609,7 +3436,9 @@ function GradingSubmissionsPage() {
               color:
                 summary.totalROI !== null && summary.totalROI >= 0
                   ? "#10B981"
-                  : "#EF4444",
+                  : summary.totalROI !== null
+                    ? "#EF4444"
+                    : "var(--text-dim)",
             },
           ].map((s) => (
             <div
@@ -2658,18 +3487,21 @@ function GradingSubmissionsPage() {
           width: "fit-content",
         }}
       >
-        {[
-          { key: "active", label: "Active" },
-          { key: "returned", label: "Returned" },
-          { key: "all", label: "All" },
-        ].map((f) => (
+        {(
+          [
+            { key: "all", label: "All" },
+            { key: "active", label: "Active" },
+            { key: "returned", label: "Returned" },
+          ] as const
+        ).map((f, i, arr) => (
           <button
             key={f.key}
             onClick={() => setFilterStatus(f.key)}
             style={{
               padding: "8px 20px",
               border: "none",
-              borderRight: f.key !== "all" ? "1px solid var(--border)" : "none",
+              borderRight:
+                i < arr.length - 1 ? "1px solid var(--border)" : "none",
               background:
                 filterStatus === f.key
                   ? "rgba(201,168,76,0.12)"
@@ -2754,11 +3586,22 @@ function GradingSubmissionsPage() {
           return (
             <div
               key={sub.id}
+              onClick={() => setDetailSubId(sub.id)}
               style={{
                 background: "var(--surface)",
                 border: `1px solid var(--border)`,
                 borderRadius: 12,
                 overflow: "hidden",
+                cursor: "pointer",
+                transition: "border-color 0.15s ease, transform 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor =
+                  "var(--gold-dim)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLDivElement).style.borderColor =
+                  "var(--border)";
               }}
             >
               <div
@@ -2882,13 +3725,25 @@ function GradingSubmissionsPage() {
                   )}
                   <div
                     style={{
-                      fontSize: 12,
-                      color: "var(--gold)",
+                      fontSize: 11,
+                      color: "var(--text-dim)",
                       fontFamily: "DM Mono, monospace",
                     }}
                   >
-                    {fmt(sub.totalCost ?? 0)} total
+                    Cost {fmt(sub.totalCost ?? 0)}
                   </div>
+                  {sub.totalGradedValue !== null && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--gold)",
+                        fontFamily: "DM Mono, monospace",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Value {fmt(sub.totalGradedValue)}
+                    </div>
+                  )}
                   {isReturned && sub.roi !== null && (
                     <div
                       style={{
@@ -2907,7 +3762,10 @@ function GradingSubmissionsPage() {
                 {/* Advance button */}
                 {canAdvance && (
                   <button
-                    onClick={() => setAdvancing(sub)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAdvancing(sub);
+                    }}
                     style={{
                       padding: "8px 14px",
                       borderRadius: 8,
@@ -3004,6 +3862,13 @@ function GradingSubmissionsPage() {
           submission={advancing}
           onClose={() => setAdvancing(null)}
           onAdvanced={load}
+        />
+      )}
+      {detailSubId && (
+        <SubmissionDetailModal
+          submissionId={detailSubId}
+          onClose={() => setDetailSubId(null)}
+          onChanged={load}
         />
       )}
     </div>
