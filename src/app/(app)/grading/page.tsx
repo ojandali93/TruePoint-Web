@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
@@ -1472,10 +1473,17 @@ function NewSubmissionModal({
   onClose,
   onCreated,
   prefill,
+  fromInventory = false,
 }: {
   onClose: () => void;
   onCreated: () => void;
-  prefill?: { name: string; setName: string; number: string } | null;
+  prefill?: {
+    name: string;
+    setName: string;
+    number: string;
+    imageSmall?: string | null;
+  } | null;
+  fromInventory?: boolean; // when true: skip card detail fields, show card header only
 }) {
   const [form, setForm] = useState({
     cardName: prefill?.name ?? "",
@@ -1597,68 +1605,122 @@ function NewSubmissionModal({
             overflowY: "auto",
           }}
         >
-          {/* Card info */}
-          <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
-          >
-            {(
-              [
-                {
-                  label: "CARD NAME",
-                  key: "cardName" as const,
-                  placeholder: "Charizard ex",
-                  span: true,
-                },
-                {
-                  label: "SET",
-                  key: "cardSet" as const,
-                  placeholder: "Obsidian Flames",
-                },
-                {
-                  label: "CARD #",
-                  key: "cardNumber" as const,
-                  placeholder: "223",
-                },
-              ] as const
-            ).map((f) => (
-              <div
-                key={f.key}
-                style={{
-                  gridColumn: "span" in f && f.span ? "1 / -1" : undefined,
-                }}
-              >
-                <div
+          {/* Card info — show read-only header when coming from inventory,
+                       editable fields when adding manually */}
+          {fromInventory && prefill ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: "12px 14px",
+              }}
+            >
+              {prefill.imageSmall && (
+                <img
+                  src={prefill.imageSmall}
+                  alt={prefill.name}
                   style={{
-                    fontSize: 10,
-                    color: "var(--text-dim)",
-                    fontFamily: "DM Mono, monospace",
-                    marginBottom: 5,
-                  }}
-                >
-                  {f.label}
-                </div>
-                <input
-                  value={form[f.key]}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, [f.key]: e.target.value }))
-                  }
-                  placeholder={f.placeholder}
-                  style={{
-                    width: "100%",
-                    background: "var(--surface-2)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    padding: "8px 12px",
-                    fontSize: 13,
-                    color: "var(--text-primary)",
-                    fontFamily: "inherit",
-                    outline: "none",
-                    boxSizing: "border-box",
+                    width: 36,
+                    height: 50,
+                    borderRadius: 4,
+                    objectFit: "cover",
+                    flexShrink: 0,
                   }}
                 />
+              )}
+              <div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  {prefill.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                    marginTop: 2,
+                  }}
+                >
+                  {prefill.setName}
+                  {prefill.number ? ` · #${prefill.number}` : ""}
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              {(
+                [
+                  {
+                    label: "CARD NAME",
+                    key: "cardName" as const,
+                    placeholder: "Charizard ex",
+                    span: true,
+                  },
+                  {
+                    label: "SET",
+                    key: "cardSet" as const,
+                    placeholder: "Obsidian Flames",
+                  },
+                  {
+                    label: "CARD #",
+                    key: "cardNumber" as const,
+                    placeholder: "223",
+                  },
+                ] as const
+              ).map((f) => (
+                <div
+                  key={f.key}
+                  style={{
+                    gridColumn: "span" in f && f.span ? "1 / -1" : undefined,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                      marginBottom: 5,
+                    }}
+                  >
+                    {f.label}
+                  </div>
+                  <input
+                    value={form[f.key]}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, [f.key]: e.target.value }))
+                    }
+                    placeholder={f.placeholder}
+                    style={{
+                      width: "100%",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      fontSize: 13,
+                      color: "var(--text-primary)",
+                      fontFamily: "inherit",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Grading company + tier */}
           <div
@@ -2179,6 +2241,315 @@ function AdvanceModal({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+// ─── Inline AI Grading Modal for submissions ──────────────────────────────────
+// Lightweight wrapper — card name/set pre-filled, user only uploads images.
+// Report is saved to ai_grading_reports with submission context.
+
+function SubmissionAIGradingModal({
+  cardName,
+  setName,
+  onClose,
+}: {
+  cardName: string;
+  setName: string;
+  onClose: () => void;
+}) {
+  const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [frontPreview, setFrontPreview] = useState<string | null>(null);
+  const [frontBase64, setFrontBase64] = useState<string | null>(null);
+  const [frontMime, setFrontMime] = useState<string>("image/jpeg");
+  const [backFile, setBackFile] = useState<File | null>(null);
+  const [backPreview, setBackPreview] = useState<string | null>(null);
+  const [backBase64, setBackBase64] = useState<string | null>(null);
+  const [backMime, setBackMime] = useState<string>("image/jpeg");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const toBase64 = (file: File): Promise<{ base64: string; mime: string }> =>
+    new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => {
+        const result = r.result as string;
+        const [header, base64] = result.split(",");
+        const mime = header.match(/data:(.*);/)?.[1] ?? "image/jpeg";
+        res({ base64, mime });
+      };
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+
+  const handleFile = async (file: File, side: "front" | "back") => {
+    const preview = URL.createObjectURL(file);
+    const { base64, mime } = await toBase64(file);
+    if (side === "front") {
+      setFrontFile(file);
+      setFrontPreview(preview);
+      setFrontBase64(base64);
+      setFrontMime(mime);
+    } else {
+      setBackFile(file);
+      setBackPreview(preview);
+      setBackBase64(base64);
+      setBackMime(mime);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!frontBase64 || !backBase64) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api.post(
+        "/grading/ai-analyze",
+        { frontBase64, frontMime, backBase64, backMime, cardName, setName },
+        { timeout: 120000 },
+      );
+      setDone(true);
+    } catch (err: any) {
+      setError(err?.message ?? "Analysis failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputStyle = {
+    display: "none",
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        backdropFilter: "blur(4px)",
+        zIndex: 200,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 16,
+          padding: 24,
+          width: 420,
+          maxWidth: "90vw",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 18,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                color: "var(--text-primary)",
+              }}
+            >
+              ✦ AI Grade Prediction
+            </div>
+            <div
+              style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}
+            >
+              {cardName} · {setName}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--text-dim)",
+              cursor: "pointer",
+              fontSize: 18,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {done ? (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>✦</div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 500,
+                color: "var(--gold)",
+                marginBottom: 8,
+              }}
+            >
+              Analysis submitted
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text-secondary)",
+                marginBottom: 20,
+              }}
+            >
+              Your AI grading report is being generated. Check the AI Grading
+              tab in a few moments.
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                padding: "10px 24px",
+                borderRadius: 8,
+                border: "none",
+                background: "var(--gold)",
+                color: "#0D0E11",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Image upload slots */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              {(["front", "back"] as const).map((side) => {
+                const preview = side === "front" ? frontPreview : backPreview;
+                const inputId = `submission-ai-${side}`;
+                return (
+                  <div key={side}>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "var(--text-dim)",
+                        fontFamily: "DM Mono, monospace",
+                        marginBottom: 6,
+                      }}
+                    >
+                      {side.toUpperCase()} IMAGE
+                    </div>
+                    <label
+                      htmlFor={inputId}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: 140,
+                        borderRadius: 10,
+                        border: `2px dashed ${preview ? "var(--gold)" : "var(--border)"}`,
+                        background: "var(--surface-2)",
+                        cursor: "pointer",
+                        overflow: "hidden",
+                        position: "relative",
+                      }}
+                    >
+                      {preview ? (
+                        <img
+                          src={preview}
+                          alt={side}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            textAlign: "center",
+                            color: "var(--text-dim)",
+                            fontSize: 12,
+                          }}
+                        >
+                          <div style={{ fontSize: 24, marginBottom: 6 }}>
+                            📷
+                          </div>
+                          Tap to upload
+                        </div>
+                      )}
+                    </label>
+                    <input
+                      id={inputId}
+                      type='file'
+                      accept='image/*'
+                      style={inputStyle}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleFile(f, side);
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            {error && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.3)",
+                  fontSize: 12,
+                  color: "#EF4444",
+                }}
+              >
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={handleAnalyze}
+              disabled={!frontBase64 || !backBase64 || loading}
+              style={{
+                width: "100%",
+                padding: "12px 0",
+                borderRadius: 10,
+                border: "none",
+                background:
+                  frontBase64 && backBase64 && !loading
+                    ? "var(--gold)"
+                    : "var(--surface-2)",
+                color:
+                  frontBase64 && backBase64 && !loading
+                    ? "#0D0E11"
+                    : "var(--text-dim)",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: frontBase64 && backBase64 ? "pointer" : "not-allowed",
+                fontFamily: "inherit",
+              }}
+            >
+              {loading ? "Analyzing…" : "✦ Analyze Card"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function GradingSubmissionsPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -2187,8 +2558,18 @@ function GradingSubmissionsPage() {
   const [showNew, setShowNew] = useState(false);
   const [advancing, setAdvancing] = useState<Submission | null>(null);
   const [pendingSubmitCards, setPendingSubmitCards] = useState<
-    { name: string; setName: string; number: string }[]
+    {
+      name: string;
+      setName: string;
+      number: string;
+      imageSmall?: string | null;
+    }[]
   >([]);
+  const [aiGradingTarget, setAiGradingTarget] = useState<{
+    cardName: string;
+    setName: string;
+    cardImage?: string | null;
+  } | null>(null);
   const { pendingCards, actionType, clearPendingAction } = usePendingAction();
 
   // If inventory sent cards to submit, open the new submission modal for each
@@ -2200,6 +2581,7 @@ function GradingSubmissionsPage() {
           name: pc.name,
           setName: pc.setName,
           number: pc.number,
+          imageSmall: pc.imageSmall,
         })),
       );
       setShowNew(true);
@@ -2594,6 +2976,37 @@ function GradingSubmissionsPage() {
                   )}
                 </div>
 
+                {/* AI Grade button — always shown while card is in grading lifecycle */}
+                {!isReturned && (
+                  <button
+                    onClick={() =>
+                      setAiGradingTarget({
+                        cardName: sub.cardName,
+                        setName: sub.cardSet,
+                        cardImage: sub.cardImage ?? null,
+                      })
+                    }
+                    title='AI Grade this card'
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid rgba(201,168,76,0.3)",
+                      background: "rgba(201,168,76,0.08)",
+                      color: "var(--gold)",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      fontWeight: 500,
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    ✦ AI Grade
+                  </button>
+                )}
+
                 {/* Advance button */}
                 {canAdvance && (
                   <button
@@ -2677,8 +3090,18 @@ function GradingSubmissionsPage() {
 
       {showNew && (
         <NewSubmissionModal
-          onClose={() => setShowNew(false)}
-          onCreated={load}
+          prefill={pendingSubmitCards[0] ?? null}
+          fromInventory={pendingSubmitCards.length > 0}
+          onClose={() => {
+            setShowNew(false);
+            setPendingSubmitCards([]);
+          }}
+          onCreated={() => {
+            const remaining = pendingSubmitCards.slice(1);
+            setPendingSubmitCards(remaining);
+            if (remaining.length === 0) setShowNew(false);
+            load();
+          }}
         />
       )}
       {advancing && (
@@ -2686,6 +3109,15 @@ function GradingSubmissionsPage() {
           submission={advancing}
           onClose={() => setAdvancing(null)}
           onAdvanced={load}
+        />
+      )}
+
+      {/* Inline AI grading modal — opens when AI Grade button clicked on a submission */}
+      {aiGradingTarget && (
+        <SubmissionAIGradingModal
+          cardName={aiGradingTarget.cardName}
+          setName={aiGradingTarget.setName}
+          onClose={() => setAiGradingTarget(null)}
         />
       )}
     </div>
@@ -3368,9 +3800,11 @@ function TradeCalculatorPage() {
 
   // Clear pending after consuming so it doesn't persist on re-visit
   useEffect(() => {
-    if (actionType === "trade" && pendingCards.length > 0) {
+    if (actionType !== "trade" || pendingCards.length === 0) return;
+    const t = window.setTimeout(() => {
       clearPendingAction();
-    }
+    }, 0);
+    return () => window.clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const youTotal = youCards.reduce((s, c) => s + (c.marketPrice ?? 0), 0);

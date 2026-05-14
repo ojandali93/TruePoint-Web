@@ -306,7 +306,7 @@ function ItemCard({
   return (
     <div
       style={{
-        background: selected ? "rgba(201,168,76,0.06)" : "var(--surface)",
+        background: "var(--surface)",
         border: selected ? "2px solid var(--gold)" : "1px solid var(--border)",
         borderRadius: 12,
         overflow: "hidden",
