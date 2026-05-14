@@ -330,7 +330,10 @@ function ItemCard({
           "translateY(-2px)";
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
+        if (!selected) {
+          (e.currentTarget as HTMLDivElement).style.borderColor =
+            "var(--border)";
+        }
         (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
       }}
     >

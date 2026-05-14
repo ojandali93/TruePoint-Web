@@ -1346,29 +1346,47 @@ function GradingArbitragePage() {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Submission {
+interface SubmissionCardLine {
   id: string;
+  submissionId: string;
+  inventoryId: string | null;
+  cardId: string | null;
   cardName: string;
-  cardSet: string;
+  cardSet: string | null;
   cardNumber: string | null;
   cardImage: string | null;
-  gradingCompany: string;
-  serviceTier: string;
+  variant: string | null;
   declaredValue: number | null;
   gradingCost: number | null;
+  serviceTier: string | null;
+  gradeReceived: string | null;
+  certNumber: string | null;
+  gradedValue: number | null;
+  aiGradingReportId: string | null;
+  position: number;
+  notes: string | null;
+}
+
+interface Submission {
+  id: string;
+  company: string;
+  serviceTier: string | null;
   status: string;
-  submittedAt: string;
+  submissionNumber: string | null;
+  trackingToGrader: string | null;
+  trackingFromGrader: string | null;
+  declaredValueTotal: number | null;
+  totalCost: number | null;
+  notes: string | null;
+  submittedAt: string | null;
   receivedAt: string | null;
   gradedAt: string | null;
   shippedBackAt: string | null;
   returnedAt: string | null;
-  submissionNumber: string | null;
-  trackingToGrader: string | null;
-  trackingFromGrader: string | null;
-  gradeReceived: string | null;
-  certNumber: string | null;
-  gradedValue: number | null;
-  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  cardCount: number;
+  cards?: SubmissionCardLine[];
   daysInTransit: number;
   roi: number | null;
 }
@@ -1466,61 +1484,91 @@ function StatusPipeline({ status }: { status: string }) {
     </div>
   );
 }
-
 // ─── New submission modal ─────────────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: "8px 12px",
+  fontSize: 13,
+  color: "var(--text-primary)",
+  fontFamily: "inherit",
+  outline: "none",
+  boxSizing: "border-box",
+};
 
 function NewSubmissionModal({
   onClose,
   onCreated,
-  prefill,
-  fromInventory = false,
+  cards,
 }: {
   onClose: () => void;
   onCreated: () => void;
-  prefill?: {
+  cards: {
+    inventoryId?: string;
+    cardId?: string;
     name: string;
     setName: string;
     number: string;
     imageSmall?: string | null;
-  } | null;
-  fromInventory?: boolean; // when true: skip card detail fields, show card header only
+  }[];
 }) {
-  const [form, setForm] = useState({
-    cardName: prefill?.name ?? "",
-    cardSet: prefill?.setName ?? "",
-    cardNumber: prefill?.number ?? "",
-    gradingCompany: "PSA",
-    serviceTier: "value",
-    declaredValue: "",
-    submissionNumber: "",
-    trackingToGrader: "",
-    notes: "",
-  });
+  const [company, setCompany] = useState("PSA");
+  const [serviceTier, setServiceTier] = useState("value");
+  const [submissionNumber, setSubmissionNumber] = useState("");
+  const [trackingToGrader, setTrackingToGrader] = useState("");
+  // Per-card declared values keyed by index
+  const [declaredValues, setDeclaredValues] = useState<Record<number, string>>(
+    () => Object.fromEntries(cards.map((_, i) => [i, ""])),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const tierOptions = Object.keys(TIERS[form.gradingCompany] ?? {});
-  const tierCost = TIERS[form.gradingCompany]?.[form.serviceTier] ?? 0;
+  const tierOptions = Object.keys(TIERS[company] ?? {});
+  const resolvedServiceTier =
+    tierOptions.length > 0 && tierOptions.includes(serviceTier)
+      ? serviceTier
+      : (tierOptions[0] ?? serviceTier);
+  const perCardCost = TIERS[company]?.[resolvedServiceTier] ?? 0;
+  const cardCount = cards.length;
+  const totalGradingCost = perCardCost * cardCount;
+  const declaredTotal = Object.values(declaredValues).reduce(
+    (s, v) => s + (parseFloat(v) || 0),
+    0,
+  );
 
   const handleSubmit = async () => {
-    if (!form.cardName || !form.cardSet) {
-      setError("Card name and set are required");
+    if (cardCount === 0) {
+      setError("Please add at least one card to this submission");
       return;
     }
     setSaving(true);
+    setError("");
     try {
       await api.post("/grading/submissions", {
-        ...form,
-        declaredValue: form.declaredValue
-          ? parseFloat(form.declaredValue)
-          : undefined,
+        company,
+        serviceTier: resolvedServiceTier,
+        submissionNumber: submissionNumber || undefined,
+        trackingToGrader: trackingToGrader || undefined,
+        cards: cards.map((c, i) => ({
+          inventoryId: c.inventoryId,
+          cardId: c.cardId,
+          cardName: c.name,
+          cardSet: c.setName,
+          cardNumber: c.number,
+          cardImage: c.imageSmall ?? undefined,
+          declaredValue: declaredValues[i]
+            ? parseFloat(declaredValues[i])
+            : undefined,
+        })),
       });
       onCreated();
       onClose();
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Failed to create submission",
-      );
+    } catch (err) {
+      console.error("[Submission] create failed:", err);
+      setError("Something went wrong. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -1545,10 +1593,14 @@ function NewSubmissionModal({
           border: "1px solid var(--border)",
           borderRadius: 14,
           width: "100%",
-          maxWidth: 480,
+          maxWidth: 560,
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
           overflow: "hidden",
         }}
       >
+        {/* Header */}
         <div
           style={{
             padding: "18px 20px",
@@ -1557,6 +1609,7 @@ function NewSubmissionModal({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            flexShrink: 0,
           }}
         >
           <div>
@@ -1578,7 +1631,9 @@ function NewSubmissionModal({
                 color: "var(--text-primary)",
               }}
             >
-              Send a card for grading
+              {cardCount === 0
+                ? "Send cards for grading"
+                : `Send ${cardCount} card${cardCount === 1 ? "" : "s"} for grading`}
             </div>
           </div>
           <button
@@ -1595,99 +1650,48 @@ function NewSubmissionModal({
           </button>
         </div>
 
+        {/* Body */}
         <div
           style={{
             padding: 20,
             display: "flex",
             flexDirection: "column",
             gap: 14,
-            maxHeight: "70vh",
             overflowY: "auto",
+            flex: 1,
           }}
         >
-          {/* Card info — show read-only header when coming from inventory,
-                       editable fields when adding manually */}
-          {fromInventory && prefill ? (
+          {cardCount === 0 ? (
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
+                padding: 24,
+                textAlign: "center",
+                color: "var(--text-dim)",
+                fontSize: 13,
                 background: "var(--surface-2)",
-                border: "1px solid var(--border)",
+                border: "1px dashed var(--border)",
                 borderRadius: 10,
-                padding: "12px 14px",
               }}
             >
-              {prefill.imageSmall && (
-                <img
-                  src={prefill.imageSmall}
-                  alt={prefill.name}
-                  style={{
-                    width: 36,
-                    height: 50,
-                    borderRadius: 4,
-                    objectFit: "cover",
-                    flexShrink: 0,
-                  }}
-                />
-              )}
-              <div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {prefill.name}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--text-dim)",
-                    marginTop: 2,
-                  }}
-                >
-                  {prefill.setName}
-                  {prefill.number ? ` · #${prefill.number}` : ""}
-                </div>
-              </div>
+              No cards selected. Go to your{" "}
+              <b style={{ color: "var(--text-secondary)" }}>Inventory</b>,
+              select cards, and click{" "}
+              <b style={{ color: "var(--text-secondary)" }}>
+                Submit for Grading
+              </b>
+              .
             </div>
           ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-              }}
-            >
-              {(
-                [
-                  {
-                    label: "CARD NAME",
-                    key: "cardName" as const,
-                    placeholder: "Charizard ex",
-                    span: true,
-                  },
-                  {
-                    label: "SET",
-                    key: "cardSet" as const,
-                    placeholder: "Obsidian Flames",
-                  },
-                  {
-                    label: "CARD #",
-                    key: "cardNumber" as const,
-                    placeholder: "223",
-                  },
-                ] as const
-              ).map((f) => (
-                <div
-                  key={f.key}
-                  style={{
-                    gridColumn: "span" in f && f.span ? "1 / -1" : undefined,
-                  }}
-                >
+            <>
+              {/* Envelope fields */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                }}
+              >
+                <div>
                   <div
                     style={{
                       fontSize: 10,
@@ -1696,265 +1700,263 @@ function NewSubmissionModal({
                       marginBottom: 5,
                     }}
                   >
-                    {f.label}
+                    GRADING COMPANY
+                  </div>
+                  <select
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    style={inputStyle}
+                  >
+                    {Object.keys(TIERS).map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                      marginBottom: 5,
+                    }}
+                  >
+                    SERVICE TIER
+                  </div>
+                  <select
+                    value={resolvedServiceTier}
+                    onChange={(e) => setServiceTier(e.target.value)}
+                    style={inputStyle}
+                  >
+                    {tierOptions.map((t) => (
+                      <option key={t} value={t}>
+                        {t.charAt(0).toUpperCase() + t.slice(1)} ($
+                        {TIERS[company][t]})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                      marginBottom: 5,
+                    }}
+                  >
+                    SUBMISSION # (optional)
                   </div>
                   <input
-                    value={form[f.key]}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, [f.key]: e.target.value }))
-                    }
-                    placeholder={f.placeholder}
-                    style={{
-                      width: "100%",
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "8px 12px",
-                      fontSize: 13,
-                      color: "var(--text-primary)",
-                      fontFamily: "inherit",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
+                    value={submissionNumber}
+                    onChange={(e) => setSubmissionNumber(e.target.value)}
+                    placeholder='12345678'
+                    style={inputStyle}
                   />
                 </div>
-              ))}
-            </div>
-          )}
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                      marginBottom: 5,
+                    }}
+                  >
+                    TRACKING TO GRADER (optional)
+                  </div>
+                  <input
+                    value={trackingToGrader}
+                    onChange={(e) => setTrackingToGrader(e.target.value)}
+                    placeholder='1Z999AA10123456784'
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
 
-          {/* Grading company + tier */}
-          <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
-          >
-            <div>
+              {/* Card list */}
+              <div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "var(--text-dim)",
+                    fontFamily: "DM Mono, monospace",
+                    marginBottom: 8,
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>CARDS IN THIS SUBMISSION ({cardCount})</span>
+                  <span>DECLARED VALUE</span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    maxHeight: 280,
+                    overflowY: "auto",
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: 8,
+                  }}
+                >
+                  {cards.map((c, i) => (
+                    <div
+                      key={`${c.inventoryId ?? c.cardId ?? i}-${i}`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "6px 8px",
+                        background: "var(--surface-2)",
+                        borderRadius: 8,
+                      }}
+                    >
+                      {c.imageSmall && (
+                        <img
+                          src={c.imageSmall}
+                          alt={c.name}
+                          style={{
+                            width: 32,
+                            height: 44,
+                            borderRadius: 4,
+                            objectFit: "cover",
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                            fontWeight: 500,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c.name}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-dim)",
+                            fontFamily: "DM Mono, monospace",
+                          }}
+                        >
+                          {c.setName}
+                          {c.number ? ` · #${c.number}` : ""}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span
+                          style={{ fontSize: 12, color: "var(--text-dim)" }}
+                        >
+                          $
+                        </span>
+                        <input
+                          type='number'
+                          value={declaredValues[i] ?? ""}
+                          onChange={(e) =>
+                            setDeclaredValues((p) => ({
+                              ...p,
+                              [i]: e.target.value,
+                            }))
+                          }
+                          placeholder='0'
+                          style={{
+                            width: 70,
+                            background: "var(--surface)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 6,
+                            padding: "5px 8px",
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                            fontFamily: "DM Mono, monospace",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cost summary */}
               <div
                 style={{
-                  fontSize: 10,
-                  color: "var(--text-dim)",
-                  fontFamily: "DM Mono, monospace",
-                  marginBottom: 5,
-                }}
-              >
-                GRADING COMPANY
-              </div>
-              <select
-                value={form.gradingCompany}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    gradingCompany: e.target.value,
-                    serviceTier: Object.keys(TIERS[e.target.value] ?? {})[0],
-                  }))
-                }
-                style={{
-                  width: "100%",
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border)",
+                  background: "rgba(201,168,76,0.06)",
+                  border: "1px solid rgba(201,168,76,0.2)",
                   borderRadius: 8,
-                  padding: "8px 12px",
-                  fontSize: 13,
-                  color: "var(--text-primary)",
-                  fontFamily: "inherit",
-                  outline: "none",
+                  padding: "10px 14px",
+                  fontSize: 12,
+                  color: "var(--text-secondary)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 8,
                 }}
               >
-                {COMPANIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-dim)",
-                  fontFamily: "DM Mono, monospace",
-                  marginBottom: 5,
-                }}
-              >
-                SERVICE TIER
-              </div>
-              <select
-                value={form.serviceTier}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, serviceTier: e.target.value }))
-                }
-                style={{
-                  width: "100%",
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "8px 12px",
-                  fontSize: 13,
-                  color: "var(--text-primary)",
-                  fontFamily: "inherit",
-                  outline: "none",
-                }}
-              >
-                {tierOptions.map((t) => (
-                  <option key={t} value={t}>
-                    {t.charAt(0).toUpperCase() + t.slice(1)} ($
-                    {TIERS[form.gradingCompany][t]})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Declared value + submission number */}
-          <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-dim)",
-                  fontFamily: "DM Mono, monospace",
-                  marginBottom: 5,
-                }}
-              >
-                DECLARED VALUE ($)
-              </div>
-              <input
-                value={form.declaredValue}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, declaredValue: e.target.value }))
-                }
-                type='number'
-                placeholder='0.00'
-                style={{
-                  width: "100%",
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "8px 12px",
-                  fontSize: 13,
-                  color: "var(--text-primary)",
-                  fontFamily: "inherit",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-            <div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-dim)",
-                  fontFamily: "DM Mono, monospace",
-                  marginBottom: 5,
-                }}
-              >
-                SUBMISSION # (optional)
-              </div>
-              <input
-                value={form.submissionNumber}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, submissionNumber: e.target.value }))
-                }
-                placeholder='12345678'
-                style={{
-                  width: "100%",
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "8px 12px",
-                  fontSize: 13,
-                  color: "var(--text-primary)",
-                  fontFamily: "inherit",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div
-              style={{
-                fontSize: 10,
-                color: "var(--text-dim)",
-                fontFamily: "DM Mono, monospace",
-                marginBottom: 5,
-              }}
-            >
-              TRACKING TO GRADER (optional)
-            </div>
-            <input
-              value={form.trackingToGrader}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, trackingToGrader: e.target.value }))
-              }
-              placeholder='1Z999AA10123456784'
-              style={{
-                width: "100%",
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: "8px 12px",
-                fontSize: 13,
-                color: "var(--text-primary)",
-                fontFamily: "inherit",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-
-          {/* Cost summary */}
-          <div
-            style={{
-              background: "rgba(201,168,76,0.06)",
-              border: "1px solid rgba(201,168,76,0.2)",
-              borderRadius: 8,
-              padding: "10px 14px",
-              fontSize: 12,
-              color: "var(--text-secondary)",
-            }}
-          >
-            Grading fee:{" "}
-            <span style={{ color: "var(--gold)", fontWeight: 500 }}>
-              ${tierCost}
-            </span>
-            {form.declaredValue && (
-              <span>
-                {" "}
-                · Total cost:{" "}
-                <span style={{ color: "var(--gold)", fontWeight: 500 }}>
-                  $
-                  {(tierCost + parseFloat(form.declaredValue || "0")).toFixed(
-                    2,
-                  )}
+                <span>
+                  {cardCount} × ${perCardCost} grading fee ={" "}
+                  <span style={{ color: "var(--gold)", fontWeight: 500 }}>
+                    ${totalGradingCost.toFixed(2)}
+                  </span>
                 </span>
-              </span>
-            )}
-          </div>
+                {declaredTotal > 0 && (
+                  <span>
+                    Declared:{" "}
+                    <span style={{ color: "var(--gold)", fontWeight: 500 }}>
+                      ${declaredTotal.toFixed(2)}
+                    </span>
+                  </span>
+                )}
+              </div>
 
-          {error && (
-            <div style={{ fontSize: 12, color: "#EF4444" }}>{error}</div>
+              {error && (
+                <div style={{ fontSize: 12, color: "#EF4444" }}>{error}</div>
+              )}
+
+              <button
+                onClick={handleSubmit}
+                disabled={saving}
+                style={{
+                  padding: "10px 24px",
+                  borderRadius: 9,
+                  border: "none",
+                  background: "var(--gold)",
+                  color: "#0D0E11",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: saving ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                  opacity: saving ? 0.7 : 1,
+                }}
+              >
+                {saving ? "Submitting..." : "Submit for Grading →"}
+              </button>
+            </>
           )}
-
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            style={{
-              padding: "10px 24px",
-              borderRadius: 9,
-              border: "none",
-              background: "var(--gold)",
-              color: "#0D0E11",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: saving ? "not-allowed" : "pointer",
-              fontFamily: "inherit",
-              opacity: saving ? 0.7 : 1,
-            }}
-          >
-            {saving ? "Submitting..." : "Submit for Grading →"}
-          </button>
         </div>
       </div>
     </div>
@@ -1975,28 +1977,27 @@ function AdvanceModal({
   const nextIdx = STATUS_STEPS.indexOf(submission.status) + 1;
   const nextStatus = STATUS_STEPS[nextIdx];
   const [form, setForm] = useState({
-    gradeReceived: "",
-    certNumber: "",
-    gradedValue: "",
     trackingFromGrader: "",
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const isReturned = nextStatus === "returned";
 
   const handleAdvance = async () => {
     setSaving(true);
+    setError("");
     try {
       await api.post(`/grading/submissions/${submission.id}/advance`, {
-        ...form,
-        gradedValue: form.gradedValue
-          ? parseFloat(form.gradedValue)
-          : undefined,
+        trackingFromGrader: form.trackingFromGrader || undefined,
+        notes: form.notes || undefined,
       });
       onAdvanced();
       onClose();
-    } catch {
+    } catch (err) {
+      console.error("[Submission] advance failed:", err);
+      setError("Something went wrong. Please try again.");
       setSaving(false);
     }
   };
@@ -2094,127 +2095,32 @@ function AdvanceModal({
                   setForm((p) => ({ ...p, trackingFromGrader: e.target.value }))
                 }
                 placeholder='Return tracking number'
-                style={{
-                  width: "100%",
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "8px 12px",
-                  fontSize: 13,
-                  color: "var(--text-primary)",
-                  fontFamily: "inherit",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
+                style={inputStyle}
               />
             </div>
           )}
+
           {isReturned && (
-            <>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-dim)",
-                      fontFamily: "DM Mono, monospace",
-                      marginBottom: 5,
-                    }}
-                  >
-                    GRADE RECEIVED
-                  </div>
-                  <input
-                    value={form.gradeReceived}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, gradeReceived: e.target.value }))
-                    }
-                    placeholder='10 / 9.5 / 9'
-                    style={{
-                      width: "100%",
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "8px 12px",
-                      fontSize: 13,
-                      color: "var(--text-primary)",
-                      fontFamily: "inherit",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-dim)",
-                      fontFamily: "DM Mono, monospace",
-                      marginBottom: 5,
-                    }}
-                  >
-                    CERT NUMBER
-                  </div>
-                  <input
-                    value={form.certNumber}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, certNumber: e.target.value }))
-                    }
-                    placeholder='12345678'
-                    style={{
-                      width: "100%",
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "8px 12px",
-                      fontSize: 13,
-                      color: "var(--text-primary)",
-                      fontFamily: "inherit",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "var(--text-dim)",
-                    fontFamily: "DM Mono, monospace",
-                    marginBottom: 5,
-                  }}
-                >
-                  GRADED VALUE ($)
-                </div>
-                <input
-                  value={form.gradedValue}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, gradedValue: e.target.value }))
-                  }
-                  type='number'
-                  placeholder='Current market value at this grade'
-                  style={{
-                    width: "100%",
-                    background: "var(--surface-2)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    padding: "8px 12px",
-                    fontSize: 13,
-                    color: "var(--text-primary)",
-                    fontFamily: "inherit",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-            </>
+            <div
+              style={{
+                padding: "12px 14px",
+                background: "rgba(16,185,129,0.06)",
+                border: "1px solid rgba(16,185,129,0.2)",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "var(--text-secondary)",
+                lineHeight: 1.5,
+              }}
+            >
+              Once the submission is marked Returned, open it to enter the
+              grade, cert number, and graded value for each card individually.
+            </div>
           )}
+
+          {error && (
+            <div style={{ fontSize: 12, color: "#EF4444" }}>{error}</div>
+          )}
+
           <button
             onClick={handleAdvance}
             disabled={saving}
@@ -2559,25 +2465,24 @@ function GradingSubmissionsPage() {
   const [advancing, setAdvancing] = useState<Submission | null>(null);
   const [pendingSubmitCards, setPendingSubmitCards] = useState<
     {
+      inventoryId?: string;
+      cardId?: string;
       name: string;
       setName: string;
       number: string;
       imageSmall?: string | null;
     }[]
   >([]);
-  const [aiGradingTarget, setAiGradingTarget] = useState<{
-    cardName: string;
-    setName: string;
-    cardImage?: string | null;
-  } | null>(null);
   const { pendingCards, actionType, clearPendingAction } = usePendingAction();
 
-  // If inventory sent cards to submit, open the new submission modal for each
+  // If inventory sent cards for submission, open ONE modal pre-filled with ALL of them
   useEffect(() => {
     if (actionType !== "submit" || pendingCards.length === 0) return;
     const t = window.setTimeout(() => {
       setPendingSubmitCards(
         pendingCards.map((pc) => ({
+          inventoryId: pc.inventoryId,
+          cardId: pc.cardId ?? undefined,
           name: pc.name,
           setName: pc.setName,
           number: pc.number,
@@ -2647,7 +2552,7 @@ function GradingSubmissionsPage() {
             Submissions
           </h1>
           <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-            Track your cards through the grading pipeline.
+            Track your submissions through the grading pipeline.
           </p>
         </div>
         <button
@@ -2664,7 +2569,7 @@ function GradingSubmissionsPage() {
             fontFamily: "inherit",
           }}
         >
-          + Submit Card
+          + New Submission
         </button>
       </div>
 
@@ -2701,7 +2606,10 @@ function GradingSubmissionsPage() {
                 summary.totalROI !== null
                   ? `${summary.totalROI >= 0 ? "+" : ""}${summary.totalROI.toFixed(0)}%`
                   : "—",
-              color: (summary.totalROI ?? 0) >= 0 ? "#10B981" : "#EF4444",
+              color:
+                summary.totalROI !== null && summary.totalROI >= 0
+                  ? "#10B981"
+                  : "#EF4444",
             },
           ].map((s) => (
             <div
@@ -2710,17 +2618,15 @@ function GradingSubmissionsPage() {
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
                 borderRadius: 10,
-                padding: "14px 16px",
-                textAlign: "center",
+                padding: "12px 14px",
               }}
             >
               <div
                 style={{
                   fontSize: 9,
                   color: "var(--text-dim)",
-                  letterSpacing: "0.07em",
                   fontFamily: "DM Mono, monospace",
-                  marginBottom: 6,
+                  marginBottom: 4,
                 }}
               >
                 {s.label}
@@ -2816,7 +2722,8 @@ function GradingSubmissionsPage() {
               marginBottom: 20,
             }}
           >
-            Submit a card for grading to start tracking it through the pipeline.
+            Select cards in your inventory and send them for grading to start
+            tracking through the pipeline.
           </div>
           <button
             onClick={() => setShowNew(true)}
@@ -2832,7 +2739,7 @@ function GradingSubmissionsPage() {
               fontFamily: "inherit",
             }}
           >
-            Submit First Card
+            New Submission
           </button>
         </div>
       )}
@@ -2842,6 +2749,7 @@ function GradingSubmissionsPage() {
           const statusColor = STATUS_COLORS[sub.status];
           const isReturned = sub.status === "returned";
           const canAdvance = !isReturned;
+          const previewCards = sub.cards ?? [];
 
           return (
             <div
@@ -2861,31 +2769,51 @@ function GradingSubmissionsPage() {
                   alignItems: "center",
                 }}
               >
-                {/* Card image */}
-                {sub.cardImage && (
+                {/* Card thumbnails preview (first 4 — overlapping fan) */}
+                {previewCards.length > 0 && (
                   <div
                     style={{
-                      width: 40,
+                      position: "relative",
+                      width:
+                        40 +
+                        Math.max(0, Math.min(previewCards.length, 4) - 1) * 18,
                       height: 56,
                       flexShrink: 0,
-                      borderRadius: 4,
-                      overflow: "hidden",
-                      background: "var(--surface-2)",
                     }}
                   >
-                    <img
-                      src={sub.cardImage}
-                      alt={sub.cardName}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
+                    {previewCards.slice(0, 4).map((c, i) => (
+                      <div
+                        key={c.id ?? i}
+                        style={{
+                          position: "absolute",
+                          left: i * 18,
+                          width: 40,
+                          height: 56,
+                          borderRadius: 4,
+                          overflow: "hidden",
+                          background: "var(--surface-2)",
+                          border: "1px solid var(--border)",
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                          zIndex: i,
+                        }}
+                      >
+                        {c.cardImage && (
+                          <img
+                            src={c.cardImage}
+                            alt={c.cardName}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
 
-                {/* Card info */}
+                {/* Envelope info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
@@ -2893,23 +2821,25 @@ function GradingSubmissionsPage() {
                       fontWeight: 500,
                       color: "var(--text-primary)",
                       marginBottom: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
                     }}
                   >
-                    {sub.cardName}
-                    {sub.gradeReceived && (
+                    <span>
+                      {sub.company} · {sub.cardCount} card
+                      {sub.cardCount === 1 ? "" : "s"}
+                    </span>
+                    {sub.submissionNumber && (
                       <span
                         style={{
-                          marginLeft: 8,
-                          padding: "2px 8px",
-                          borderRadius: 12,
-                          background: `${statusColor}20`,
-                          color: statusColor,
                           fontSize: 11,
-                          fontWeight: 600,
+                          color: "var(--text-dim)",
                           fontFamily: "DM Mono, monospace",
                         }}
                       >
-                        {sub.gradingCompany} {sub.gradeReceived}
+                        #{sub.submissionNumber}
                       </span>
                     )}
                   </div>
@@ -2921,9 +2851,7 @@ function GradingSubmissionsPage() {
                       marginBottom: 8,
                     }}
                   >
-                    {sub.cardSet}
-                    {sub.cardNumber ? ` #${sub.cardNumber}` : ""} ·{" "}
-                    {sub.gradingCompany} {sub.serviceTier}
+                    {sub.company} {sub.serviceTier ?? ""}
                   </div>
                   <StatusPipeline status={sub.status} />
                 </div>
@@ -2939,7 +2867,7 @@ function GradingSubmissionsPage() {
                       marginBottom: 2,
                     }}
                   >
-                    Submitted {fmtDate(sub.submittedAt)}
+                    Submitted {sub.submittedAt ? fmtDate(sub.submittedAt) : "—"}
                   </div>
                   {isReturned && sub.returnedAt && (
                     <div
@@ -2959,7 +2887,7 @@ function GradingSubmissionsPage() {
                       fontFamily: "DM Mono, monospace",
                     }}
                   >
-                    {fmt(sub.gradingCost)} fee
+                    {fmt(sub.totalCost ?? 0)} total
                   </div>
                   {isReturned && sub.roi !== null && (
                     <div
@@ -2975,37 +2903,6 @@ function GradingSubmissionsPage() {
                     </div>
                   )}
                 </div>
-
-                {/* AI Grade button — always shown while card is in grading lifecycle */}
-                {!isReturned && (
-                  <button
-                    onClick={() =>
-                      setAiGradingTarget({
-                        cardName: sub.cardName,
-                        setName: sub.cardSet,
-                        cardImage: sub.cardImage ?? null,
-                      })
-                    }
-                    title='AI Grade this card'
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      border: "1px solid rgba(201,168,76,0.3)",
-                      background: "rgba(201,168,76,0.08)",
-                      color: "var(--gold)",
-                      fontSize: 11,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      fontWeight: 500,
-                      flexShrink: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    ✦ AI Grade
-                  </button>
-                )}
 
                 {/* Advance button */}
                 {canAdvance && (
@@ -3029,10 +2926,10 @@ function GradingSubmissionsPage() {
                 )}
               </div>
 
-              {/* Tracking numbers if present */}
+              {/* Tracking footer */}
               {(sub.submissionNumber ||
                 sub.trackingToGrader ||
-                sub.certNumber) && (
+                sub.trackingFromGrader) && (
                 <div
                   style={{
                     padding: "8px 18px 10px",
@@ -3068,16 +2965,16 @@ function GradingSubmissionsPage() {
                       </span>
                     </span>
                   )}
-                  {sub.certNumber && (
+                  {sub.trackingFromGrader && (
                     <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                      Cert:{" "}
+                      Tracking back:{" "}
                       <span
                         style={{
                           fontFamily: "DM Mono, monospace",
-                          color: "var(--gold)",
+                          color: "var(--text-secondary)",
                         }}
                       >
-                        {sub.certNumber}
+                        {sub.trackingFromGrader}
                       </span>
                     </span>
                   )}
@@ -3090,16 +2987,14 @@ function GradingSubmissionsPage() {
 
       {showNew && (
         <NewSubmissionModal
-          prefill={pendingSubmitCards[0] ?? null}
-          fromInventory={pendingSubmitCards.length > 0}
+          cards={pendingSubmitCards}
           onClose={() => {
             setShowNew(false);
             setPendingSubmitCards([]);
           }}
           onCreated={() => {
-            const remaining = pendingSubmitCards.slice(1);
-            setPendingSubmitCards(remaining);
-            if (remaining.length === 0) setShowNew(false);
+            setShowNew(false);
+            setPendingSubmitCards([]);
             load();
           }}
         />
@@ -3109,15 +3004,6 @@ function GradingSubmissionsPage() {
           submission={advancing}
           onClose={() => setAdvancing(null)}
           onAdvanced={load}
-        />
-      )}
-
-      {/* Inline AI grading modal — opens when AI Grade button clicked on a submission */}
-      {aiGradingTarget && (
-        <SubmissionAIGradingModal
-          cardName={aiGradingTarget.cardName}
-          setName={aiGradingTarget.setName}
-          onClose={() => setAiGradingTarget(null)}
         />
       )}
     </div>
