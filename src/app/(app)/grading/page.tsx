@@ -7,6 +7,8 @@ import { usePendingAction } from "../../../context/PendingActionContext";
 
 // ─── AI Grading (lazy imported inline below) ──────────────────────────────────
 import AIGradingPage from "./ai/page";
+import { FeatureGate } from "@/components/PlanGuards";
+import { usePlan } from "@/context/PlanContext";
 
 type PageTab = "arbitrage" | "submissions" | "ai" | "trade";
 
@@ -1536,6 +1538,8 @@ function NewSubmissionModal({
     imageSmall?: string | null;
   }[];
 }) {
+  const { refresh: refreshPlan } = usePlan();
+
   const [company, setCompany] = useState("PSA");
   const [serviceTier, setServiceTier] = useState("value");
   const [submissionNumber, setSubmissionNumber] = useState("");
@@ -1585,6 +1589,7 @@ function NewSubmissionModal({
             : undefined,
         })),
       });
+      await refreshPlan();
       onCreated();
       onClose();
     } catch (err) {
@@ -2185,6 +2190,8 @@ function SubmissionAIGradingModal({
   onReportCreated?: () => void;
   onClose: () => void;
 }) {
+  const { refresh: refreshPlan } = usePlan();
+
   const [frontFile, setFrontFile] = useState<File | null>(null);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [frontBase64, setFrontBase64] = useState<string | null>(null);
@@ -2245,6 +2252,7 @@ function SubmissionAIGradingModal({
         { timeout: 120000 },
       );
       setDone(true);
+      await refreshPlan();
       onReportCreated?.();
     } catch (err) {
       console.error("[AI Analysis] failed:", err);
@@ -4736,14 +4744,41 @@ export default function GradingPage() {
         </div>
       </div>
 
-      {tab === "arbitrage" ? (
-        <GradingArbitragePage />
-      ) : tab === "submissions" ? (
-        <GradingSubmissionsPage />
-      ) : tab === "trade" ? (
-        <TradeCalculatorPage />
-      ) : (
-        <AIGradingPage />
+      {tab === "arbitrage" && (
+        <FeatureGate
+          feature='regrade_arbitrage'
+          upgradeTo='collector'
+          featureLabel='regrade arbitrage'
+        >
+          <GradingArbitragePage />
+        </FeatureGate>
+      )}
+      {tab === "submissions" && (
+        <FeatureGate
+          feature='submission_tracking'
+          upgradeTo='collector'
+          featureLabel='submission tracking'
+        >
+          <GradingSubmissionsPage />
+        </FeatureGate>
+      )}
+      {tab === "ai" && (
+        <FeatureGate
+          feature='ai_grading'
+          upgradeTo='collector'
+          featureLabel='AI grading reports'
+        >
+          <AIGradingPage />
+        </FeatureGate>
+      )}
+      {tab === "trade" && (
+        <FeatureGate
+          feature='portfolio_dashboard'
+          upgradeTo='pro'
+          featureLabel='the portfolio dashboard'
+        >
+          <TradeCalculatorPage />
+        </FeatureGate>
       )}
     </div>
   );

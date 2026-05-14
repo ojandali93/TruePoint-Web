@@ -261,6 +261,9 @@ const ROADMAP = [
   },
 ];
 
+// Replacement for the PLANS array in src/app/page.tsx (around lines 264-322).
+// Just paste this over the existing PLANS = [ ... ] block.
+
 const PLANS = [
   {
     name: "Starter",
@@ -275,10 +278,10 @@ const PLANS = [
       { text: "Master set tracker", included: true, note: "3 sets" },
       { text: "Card search & live prices", included: true },
       { text: "Set browser", included: true },
-      { text: "Regrade arbitrage", included: false },
+      { text: "AI grading reports", included: false },
       { text: "Inventory tracking", included: false },
+      { text: "Submission tracking", included: false },
       { text: "Portfolio dashboard", included: false },
-      { text: "Sealed collection tracking", included: false },
     ],
   },
   {
@@ -291,12 +294,14 @@ const PLANS = [
     cta: "Start Collector plan",
     features: [
       { text: "Everything in Starter", included: true },
+      { text: "AI grading reports", included: true, note: "100/mo" },
+      { text: "Submission tracking", included: true, note: "4/mo" },
       { text: "Regrade arbitrage", included: true, note: "50/mo" },
       { text: "Master set tracker", included: true, note: "unlimited" },
       { text: "Singles & graded inventory", included: true },
       { text: "Price alerts", included: true, note: "10 cards" },
-      { text: "Sealed collection tracking", included: false },
       { text: "Full portfolio dashboard", included: false },
+      { text: "Sealed collection tracking", included: false },
       { text: "Pack opening analytics", included: false },
     ],
   },
@@ -310,6 +315,8 @@ const PLANS = [
     cta: "Start Pro plan",
     features: [
       { text: "Everything in Collector", included: true },
+      { text: "AI grading reports", included: true, note: "unlimited" },
+      { text: "Submission tracking", included: true, note: "unlimited" },
       { text: "Regrade arbitrage", included: true, note: "unlimited" },
       { text: "Sealed collection tracking", included: true },
       { text: "Full portfolio dashboard", included: true },

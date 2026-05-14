@@ -2,6 +2,7 @@
 "use client";
 import { useState, useRef, useCallback, useEffect } from "react";
 import api from "../../../../lib/api";
+import { usePlan } from "@/context/PlanContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1378,6 +1379,7 @@ function ImageDropZone({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AIGradingPage() {
+  const { refresh: refreshPlan } = usePlan();
   const [tab, setTab] = useState<"analyze" | "reports">("analyze");
   const [showProcessing, setShowProcessing] = useState(false);
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(
@@ -1478,6 +1480,7 @@ export default function AIGradingPage() {
         },
         { timeout: 120000 },
       );
+      await refreshPlan();
       setShowProcessing(true);
     } catch (err: any) {
       setError(err?.message ?? "Analysis failed. Please try again.");

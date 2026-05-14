@@ -2,7 +2,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import api from "../../lib/api";
+import { usePlan } from "../../context/PlanContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,9 +47,28 @@ function variantLabel(v: string): string {
   );
 }
 
+// Parse a plan-locked response body from the backend so we can show the
+// upgrade CTA in-place rather than a generic "Failed to add" message.
+interface PlanErrorBody {
+  code?: "PLAN_FEATURE_LOCKED" | "PLAN_LIMIT_REACHED";
+  upgradeTo?: "collector" | "pro";
+  error?: string;
+}
+
+const PLAN_LABEL: Record<string, string> = {
+  collector: "Collector",
+  pro: "Pro",
+};
+
 // ─── QuickAddInventory ────────────────────────────────────────────────────────
 // Renders a compact add-to-inventory UI for each raw card variant.
 // Used on both the set browser card grid and the card detail page.
+//
+// Plan gating: inventory tracking requires Collector or higher. Starter
+// users see a compact upgrade pill instead of the qty steppers. The
+// backend also enforces this — if a user somehow bypasses the UI gate
+// (admin demoted mid-session, etc.) the API will return a 403 plan
+// error which we surface inline.
 
 export default function QuickAddInventory({
   cardId,
@@ -59,11 +80,23 @@ export default function QuickAddInventory({
   variants,
   collectionId,
 }: QuickAddInventoryProps) {
+  // Suppress unused-prop warnings — these are part of the public API of this
+  // component even though some screens don't need them in the render path.
+  void cardName;
+  void setId;
+  void setName;
+  void cardNumber;
+  void imageSmall;
+
+  const { features, loading: planLoading } = usePlan();
+
   // qty[variant] = current pending quantity
   const [qty, setQty] = useState<Record<string, number>>({});
   // added[variant] = number successfully added (for feedback)
   const [added, setAdded] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState<string | null>(null);
+  // planLock takes priority over generic error — it carries the upgradeTo CTA
+  const [planLock, setPlanLock] = useState<PlanErrorBody | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const getQty = (v: string) => qty[v] ?? 0;
@@ -80,6 +113,7 @@ export default function QuickAddInventory({
       if (count === 0) return;
       setLoading(variant.variant);
       setError(null);
+      setPlanLock(null);
       try {
         // Add one inventory entry per quantity
         await Promise.all(
@@ -97,7 +131,17 @@ export default function QuickAddInventory({
         }));
         setQty((p) => ({ ...p, [variant.variant]: 0 }));
       } catch (err: any) {
-        setError(err?.message ?? "Failed to add");
+        // Surface plan-specific 403 errors with the upgrade CTA
+        const body = err?.response?.data as PlanErrorBody | undefined;
+        if (
+          body?.code === "PLAN_FEATURE_LOCKED" ||
+          body?.code === "PLAN_LIMIT_REACHED"
+        ) {
+          setPlanLock(body);
+        } else {
+          console.error("[QuickAddInventory] add failed:", err);
+          setError("Couldn't add to inventory. Please try again.");
+        }
       } finally {
         setLoading(null);
       }
@@ -107,10 +151,112 @@ export default function QuickAddInventory({
 
   if (variants.length === 0) return null;
 
+  // ─── Render: locked state (Starter trying to add inventory) ───────────────
+  // Don't flash the locked UI while the plan snapshot is still loading.
+
+  if (!planLoading && !features.inventory_tracking) {
+    return (
+      <div
+        style={{
+          marginTop: 8,
+          paddingTop: 6,
+          borderTop: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10,
+            color: "var(--text-dim)",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span style={{ fontSize: 11 }}>🔒</span> Inventory
+        </span>
+        <Link
+          href='/settings?tab=billing'
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            fontSize: 10,
+            color: "var(--gold)",
+            fontWeight: 500,
+            textDecoration: "none",
+            padding: "3px 8px",
+            borderRadius: 5,
+            border: "1px solid rgba(201,168,76,0.3)",
+            background: "rgba(201,168,76,0.06)",
+            flexShrink: 0,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Upgrade
+        </Link>
+      </div>
+    );
+  }
+
+  // ─── Render: normal state ────────────────────────────────────────────────
+
   return (
     <div style={{ marginTop: 8 }}>
-      {error && (
-        <div style={{ fontSize: 10, color: "var(--red)", marginBottom: 4 }}>
+      {planLock && (
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--gold)",
+            background: "rgba(201,168,76,0.06)",
+            border: "1px solid rgba(201,168,76,0.2)",
+            borderRadius: 6,
+            padding: "5px 8px",
+            marginBottom: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 6,
+          }}
+        >
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0,
+            }}
+          >
+            {planLock.error ?? "Upgrade required to continue."}
+          </span>
+          {planLock.upgradeTo && (
+            <Link
+              href='/settings?tab=billing'
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                color: "#0D0E11",
+                background: "var(--gold)",
+                padding: "2px 7px",
+                borderRadius: 4,
+                fontSize: 10,
+                fontWeight: 500,
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              → {PLAN_LABEL[planLock.upgradeTo] ?? planLock.upgradeTo}
+            </Link>
+          )}
+        </div>
+      )}
+      {error && !planLock && (
+        <div style={{ fontSize: 10, color: "#EF4444", marginBottom: 4 }}>
           {error}
         </div>
       )}
