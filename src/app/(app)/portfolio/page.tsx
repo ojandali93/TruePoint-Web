@@ -47,11 +47,13 @@ interface PortfolioData {
   costBasis: number;
   gainLoss: number;
   gainLossPct: number | null;
-  breakdown: {
-    rawCards: { value: number; count: number };
-    gradedCards: { value: number; count: number };
-    sealedProducts: { value: number; count: number };
-  };
+  // Flat breakdown fields — matches getPortfolio's actual return shape
+  rawCardValue: number;
+  gradedCardValue: number;
+  sealedProductValue: number;
+  rawCards: number;
+  gradedCards: number;
+  sealedProducts: number;
   history: HistoryPoint[];
   allTimeHigh: number;
   allTimeLow: number;
@@ -566,10 +568,19 @@ export default function PortfolioPage() {
 
   const load = useCallback(async (days = 90) => {
     try {
-      const res = await api.get<{ data: PortfolioData }>(
+      const res = await api.get<{ data: any }>(
         `/portfolio?days=${days}${collectionParam}`,
       );
-      setData(res.data.data);
+      const p = res.data.data;
+      // Backend uses totalValue/totalGainLoss/totalGainLossPct/totalCostBasis;
+      // adapt to dashboard's preferred names so the rest of the file reads work unchanged.
+      setData({
+        ...p,
+        currentValue: p.totalValue ?? p.currentValue ?? 0,
+        gainLoss: p.totalGainLoss ?? p.gainLoss ?? 0,
+        gainLossPct: p.totalGainLossPct ?? p.gainLossPct ?? null,
+        costBasis: p.totalCostBasis ?? p.costBasis ?? 0,
+      });
     } catch (err) {
       console.error("[Portfolio] Load failed:", err);
     } finally {
@@ -914,18 +925,18 @@ export default function PortfolioPage() {
           />
           <StatCard
             label='RAW CARDS'
-            value={fmt(data.breakdown.rawCards.value)}
-            sub={`${data.breakdown.rawCards.count} cards`}
+            value={fmt(data.rawCardValue)}
+            sub={`${data.rawCards} cards`}
           />
           <StatCard
             label='GRADED CARDS'
-            value={fmt(data.breakdown.gradedCards.value)}
-            sub={`${data.breakdown.gradedCards.count} cards`}
+            value={fmt(data.gradedCardValue)}
+            sub={`${data.gradedCards} cards`}
           />
           <StatCard
             label='SEALED PRODUCTS'
-            value={fmt(data.breakdown.sealedProducts.value)}
-            sub={`${data.breakdown.sealedProducts.count} items`}
+            value={fmt(data.sealedProductValue)}
+            sub={`${data.sealedProducts} items`}
           />
         </div>
 
@@ -1262,20 +1273,20 @@ export default function PortfolioPage() {
             {[
               {
                 label: "Raw Cards",
-                value: data.breakdown.rawCards.value,
-                count: data.breakdown.rawCards.count,
+                value: data.rawCardValue,
+                count: data.rawCards,
                 color: "#C9A84C",
               },
               {
                 label: "Graded Cards",
-                value: data.breakdown.gradedCards.value,
-                count: data.breakdown.gradedCards.count,
+                value: data.gradedCardValue,
+                count: data.gradedCards,
                 color: "#378ADD",
               },
               {
                 label: "Sealed Products",
-                value: data.breakdown.sealedProducts.value,
-                count: data.breakdown.sealedProducts.count,
+                value: data.sealedProductValue,
+                count: data.sealedProducts,
                 color: "#3DAA6E",
               },
             ].map((row) => {

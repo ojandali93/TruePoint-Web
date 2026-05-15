@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -19,11 +20,13 @@ interface PortfolioData {
   change7dPct: number | null;
   change30d: number | null;
   change30dPct: number | null;
-  breakdown: {
-    rawCards: { value: number; count: number };
-    gradedCards: { value: number; count: number };
-    sealedProducts: { value: number; count: number };
-  };
+  // Flat breakdown fields — matches getPortfolio's actual return shape
+  rawCardValue: number;
+  gradedCardValue: number;
+  sealedProductValue: number;
+  rawCards: number;
+  gradedCards: number;
+  sealedProducts: number;
   history: { date: string; totalValue: number }[];
   totalItems: number;
   topGainers: TopPerformer[];
@@ -52,18 +55,23 @@ interface MasterSetProgress {
   needCount: number;
 }
 
-interface GradingSubmission {
+interface GradingSubmissionCardPreview {
   id: string;
   cardName: string;
-  cardSet: string;
   cardImage: string | null;
-  gradingCompany: string;
-  serviceTier: string;
+}
+
+interface GradingSubmission {
+  id: string;
+  company: string; // was "gradingCompany"
+  serviceTier: string | null;
   status: string;
-  submittedAt: string;
+  submittedAt: string | null;
   daysInTransit: number;
-  gradeReceived: string | null;
-  gradingCost: number | null;
+  cardCount: number;
+  totalCost: number | null; // was "gradingCost"
+  totalGradedValue: number | null;
+  cards?: GradingSubmissionCardPreview[]; // first 4 thumbnails
 }
 
 interface GradingSummary {
@@ -71,6 +79,7 @@ interface GradingSummary {
   activeInPipeline: number;
   returned: number;
   totalSpentOnGrading: number;
+  netProfitLoss1Year?: number;
   totalROI: number | null;
 }
 
@@ -348,12 +357,22 @@ export default function DashboardPage() {
 
       // Load all sections in parallel
       Promise.all([
-        // Portfolio
+        // Portfolio — backend returns totalValue/totalGainLoss/totalGainLossPct/totalCostBasis
+        // The dashboard uses currentValue/gainLoss/gainLossPct/costBasis, so we adapt here.
         api
-          .get<{ data: PortfolioData }>(
+          .get<{ data: any }>(
             `/portfolio?days=30${activeCollectionId ? "&collectionId=" + activeCollectionId : ""}`,
           )
-          .then((r) => setPortfolio(r.data.data))
+          .then((r) => {
+            const p = r.data.data;
+            setPortfolio({
+              ...p,
+              currentValue: p.totalValue ?? p.currentValue ?? 0,
+              gainLoss: p.totalGainLoss ?? p.gainLoss ?? 0,
+              gainLossPct: p.totalGainLossPct ?? p.gainLossPct ?? null,
+              costBasis: p.totalCostBasis ?? p.costBasis ?? 0,
+            });
+          })
           .catch(() => {})
           .finally(() => setLoading((p) => ({ ...p, portfolio: false }))),
 
@@ -714,17 +733,17 @@ export default function DashboardPage() {
                 {[
                   {
                     label: "Raw",
-                    val: portfolio?.breakdown.rawCards.count ?? 0,
+                    val: portfolio?.rawCards ?? 0,
                     color: "#6B7280",
                   },
                   {
                     label: "Graded",
-                    val: portfolio?.breakdown.gradedCards.count ?? 0,
+                    val: portfolio?.gradedCards ?? 0,
                     color: "var(--gold)",
                   },
                   {
                     label: "Sealed",
-                    val: portfolio?.breakdown.sealedProducts.count ?? 0,
+                    val: portfolio?.sealedProducts ?? 0,
                     color: "#8B5CF6",
                   },
                 ].map((b) => (
@@ -1096,7 +1115,7 @@ export default function DashboardPage() {
                         (e.currentTarget.style.borderColor = "transparent")
                       }
                     >
-                      {sub.cardImage && (
+                      {sub.cards?.[0]?.cardImage && (
                         <div
                           style={{
                             width: 32,
@@ -1107,8 +1126,8 @@ export default function DashboardPage() {
                           }}
                         >
                           <img
-                            src={sub.cardImage}
-                            alt={sub.cardName}
+                            src={sub.cards[0].cardImage}
+                            alt={sub.cards[0].cardName}
                             style={{
                               width: "100%",
                               height: "100%",
@@ -1128,7 +1147,8 @@ export default function DashboardPage() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {sub.cardName}
+                          {sub.company} · {sub.cardCount} card
+                          {sub.cardCount === 1 ? "" : "s"}
                         </div>
                         <div
                           style={{
@@ -1138,7 +1158,10 @@ export default function DashboardPage() {
                             marginTop: 2,
                           }}
                         >
-                          {sub.gradingCompany} · {sub.daysInTransit}d in transit
+                          {sub.serviceTier ?? ""}
+                          {sub.daysInTransit != null
+                            ? ` · ${sub.daysInTransit}d in transit`
+                            : ""}
                         </div>
                       </div>
                       <div style={{ flexShrink: 0, textAlign: "right" }}>
@@ -1399,20 +1422,20 @@ export default function DashboardPage() {
             {[
               {
                 label: "Raw Cards",
-                count: portfolio.breakdown.rawCards.count,
-                value: portfolio.breakdown.rawCards.value,
+                count: portfolio.rawCards,
+                value: portfolio.rawCardValue,
                 color: "#6B7280",
               },
               {
                 label: "Graded Cards",
-                count: portfolio.breakdown.gradedCards.count,
-                value: portfolio.breakdown.gradedCards.value,
+                count: portfolio.gradedCards,
+                value: portfolio.gradedCardValue,
                 color: "var(--gold)",
               },
               {
                 label: "Sealed Products",
-                count: portfolio.breakdown.sealedProducts.count,
-                value: portfolio.breakdown.sealedProducts.value,
+                count: portfolio.sealedProducts,
+                value: portfolio.sealedProductValue,
                 color: "#8B5CF6",
               },
             ].map((b) => {

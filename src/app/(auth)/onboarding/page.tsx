@@ -1012,15 +1012,21 @@ function OnboardingFlow() {
   useEffect(() => {
     const sessionId = searchParams.get("session_id");
     if (sessionId) {
-      // Coming back from Stripe — verify and go straight to dashboard
       api
         .post("/billing/verify-session", { sessionId })
-        .then(() => {
-          router.push(ROUTES.DASHBOARD); // ← go to dashboard, not confirm step
+        .then(async () => {
+          // Send verification email NOW (after Stripe completes for paid plans,
+          // or immediately after profile for Starter)
+          try {
+            await api.post("/auth/send-verification-email", {});
+          } catch (err) {
+            console.error("Failed to send verification email:", err);
+          }
+          router.push("/verify-email"); // ← was ROUTES.DASHBOARD
         })
         .catch((err) => {
           console.error("Session verify failed:", err);
-          router.push(ROUTES.DASHBOARD); // ← still go to dashboard even if verify fails
+          router.push("/verify-email"); // ← was ROUTES.DASHBOARD
         });
     }
   }, [searchParams, router]);
@@ -1035,7 +1041,17 @@ function OnboardingFlow() {
   };
 
   const handleBillingNext = () => setStep("confirm");
-  const handleFinish = () => router.push(ROUTES.DASHBOARD);
+  const handleFinish = async () => {
+    // For Starter (no Stripe step), trigger the verification email here.
+    // For paid plans, this is also called as a fallback in case the user
+    // skipped the Stripe return flow and got to the confirm step directly.
+    try {
+      await api.post("/auth/send-verification-email", {});
+    } catch (err) {
+      console.error("[Onboarding] send verification email failed:", err);
+    }
+    router.push("/verify-email");
+  };
 
   return (
     <div>

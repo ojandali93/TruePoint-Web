@@ -198,15 +198,12 @@ function RegisterForm() {
 
   const onSubmit = async (data: FormData) => {
     setServerError(null);
-
     try {
-      // Step 1 — Create Supabase auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/api/auth/callback`,
-        },
+        // Note: emailRedirectTo is unused now since we manage verification
+        // ourselves. Safe to keep or remove.
       });
 
       if (authError) {
@@ -220,140 +217,130 @@ function RegisterForm() {
         return;
       }
 
-      if (!authData.user) {
+      if (!authData.user || !authData.session) {
+        // With Supabase's "Confirm email" turned OFF, session should always
+        // be present. If it's not, something is misconfigured.
         setServerError("Account creation failed. Please try again.");
         return;
       }
 
-      // Step 2 — Create profile row immediately
-      // We need the session for the API call — sign in right after signup
-      // If email confirmation is disabled in Supabase, session is available immediately
-      const session = authData.session;
-
-      if (session) {
-        // Save phone to Supabase auth metadata if provided
-        if (data.phone) {
-          try {
-            await supabase.auth.updateUser({
-              data: { full_name: data.full_name, phone: data.phone },
-            });
-          } catch (err) {
-            console.error("Failed to save phone:", err);
-          }
+      // Save name + phone to user metadata
+      if (data.phone || data.full_name) {
+        try {
+          await supabase.auth.updateUser({
+            data: { full_name: data.full_name, phone: data.phone },
+          });
+        } catch (err) {
+          console.error("Failed to save profile metadata:", err);
         }
-
-        // Save full_name to auth metadata so onboarding can read it later
-        // Profile row is created via upsert in onboarding step 1 — not here
-        // This avoids the username validation requirement on POST /users/me
-        router.push(`/onboarding?plan=${plan}`);
-      } else {
-        // Email confirmation is on — user needs to verify before we can create profile
-        setSubmittedEmail(data.email);
-        setStep("verify");
       }
+
+      // Always go to onboarding. Email verification happens at the END of
+      // onboarding (after Stripe), not before signup.
+      router.push(`/onboarding?plan=${plan}`);
     } catch (err: unknown) {
-      const message =
+      setServerError(
         err instanceof Error
           ? err.message
-          : "Something went wrong. Please try again.";
-      setServerError(message);
+          : "Something went wrong. Please try again.",
+      );
     }
   };
 
   // ─── Email verification screen ──────────────────────────────────────────────
-  if (step === "verify") {
-    return (
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          padding: "40px 32px",
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            background: "rgba(201,168,76,0.15)",
-            border: "1px solid rgba(201,168,76,0.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 22,
-            margin: "0 auto 20px",
-          }}
-        >
-          ✉
-        </div>
-        <h2
-          style={{
-            fontSize: 20,
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            marginBottom: 10,
-          }}
-        >
-          Check your email
-        </h2>
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--text-secondary)",
-            lineHeight: 1.7,
-            marginBottom: 24,
-          }}
-        >
-          We sent a confirmation link to{" "}
-          <span
-            style={{
-              color: "var(--gold)",
-              fontFamily: "DM Mono, monospace",
-              fontSize: 12,
-            }}
-          >
-            {submittedEmail}
-          </span>
-          . Click the link to activate your account and continue setup.
-        </p>
-        <div
-          style={{
-            background: "var(--surface-2)",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            padding: "14px",
-            fontSize: 12,
-            color: "var(--text-dim)",
-            lineHeight: 1.6,
-          }}
-        >
-          Didn&apos;t receive it? Check your spam folder or{" "}
-          <button
-            onClick={async () => {
-              await supabase.auth.resend({
-                type: "signup",
-                email: submittedEmail,
-              });
-            }}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--gold)",
-              cursor: "pointer",
-              fontSize: 12,
-              fontFamily: "inherit",
-              padding: 0,
-            }}
-          >
-            resend the email
-          </button>
-          .
-        </div>
-      </div>
-    );
-  }
+  // if (step === "verify") {
+  //   return (
+  //     <div
+  //       style={{
+  //         background: "var(--surface)",
+  //         border: "1px solid var(--border)",
+  //         borderRadius: 12,
+  //         padding: "40px 32px",
+  //         textAlign: "center",
+  //       }}
+  //     >
+  //       <div
+  //         style={{
+  //           width: 56,
+  //           height: 56,
+  //           borderRadius: "50%",
+  //           background: "rgba(201,168,76,0.15)",
+  //           border: "1px solid rgba(201,168,76,0.4)",
+  //           display: "flex",
+  //           alignItems: "center",
+  //           justifyContent: "center",
+  //           fontSize: 22,
+  //           margin: "0 auto 20px",
+  //         }}
+  //       >
+  //         ✉
+  //       </div>
+  //       <h2
+  //         style={{
+  //           fontSize: 20,
+  //           fontWeight: 500,
+  //           color: "var(--text-primary)",
+  //           marginBottom: 10,
+  //         }}
+  //       >
+  //         Check your email
+  //       </h2>
+  //       <p
+  //         style={{
+  //           fontSize: 13,
+  //           color: "var(--text-secondary)",
+  //           lineHeight: 1.7,
+  //           marginBottom: 24,
+  //         }}
+  //       >
+  //         We sent a confirmation link to{" "}
+  //         <span
+  //           style={{
+  //             color: "var(--gold)",
+  //             fontFamily: "DM Mono, monospace",
+  //             fontSize: 12,
+  //           }}
+  //         >
+  //           {submittedEmail}
+  //         </span>
+  //         . Click the link to activate your account and continue setup.
+  //       </p>
+  //       <div
+  //         style={{
+  //           background: "var(--surface-2)",
+  //           border: "1px solid var(--border)",
+  //           borderRadius: 8,
+  //           padding: "14px",
+  //           fontSize: 12,
+  //           color: "var(--text-dim)",
+  //           lineHeight: 1.6,
+  //         }}
+  //       >
+  //         Didn&apos;t receive it? Check your spam folder or{" "}
+  //         <button
+  //           onClick={async () => {
+  //             await supabase.auth.resend({
+  //               type: "signup",
+  //               email: submittedEmail,
+  //             });
+  //           }}
+  //           style={{
+  //             background: "none",
+  //             border: "none",
+  //             color: "var(--gold)",
+  //             cursor: "pointer",
+  //             fontSize: 12,
+  //             fontFamily: "inherit",
+  //             padding: 0,
+  //           }}
+  //         >
+  //           resend the email
+  //         </button>
+  //         .
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   // ─── Main registration form ─────────────────────────────────────────────────
   return (

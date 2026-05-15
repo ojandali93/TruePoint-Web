@@ -9,6 +9,7 @@ import { createClient } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { ROUTES } from "../../../constants/routes";
+import { registerCurrentDevice } from "@/lib/deviceTracking";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -48,7 +49,7 @@ export default function LoginPage() {
         );
         return;
       }
-
+      await registerCurrentDevice();
       router.push(ROUTES.DASHBOARD);
       router.refresh();
     } catch {
@@ -235,7 +236,7 @@ export default function LoginPage() {
                     lineHeight: 1.6,
                   }}
                 >
-                  Enter your email and we'll send you a reset link.
+                  Enter your email and we&apos;ll send you a reset link.
                 </p>
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 16 }}
@@ -272,7 +273,7 @@ export default function LoginPage() {
           color: "var(--text-secondary)",
         }}
       >
-        Don't have an account?{" "}
+        Don&apos;t have an account?{" "}
         <Link
           href={ROUTES.REGISTER}
           style={{

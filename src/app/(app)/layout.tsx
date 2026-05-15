@@ -14,6 +14,7 @@ import {
 } from "../../context/CollectionContext";
 import { PendingActionProvider } from "../../context/PendingActionContext";
 import { PlanProvider } from "../../context/PlanContext";
+import EmailVerificationGate from "../../components/EmailVerificationGate";
 
 // ─── Desktop sidebar nav — ordered to match mobile tab order ──────────────────
 const NAV_ITEMS = [
@@ -674,230 +675,234 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <CollectionProvider>
-      <PendingActionProvider>
-        <PlanProvider>
-          <div
-            style={{
-              display: "flex",
-              minHeight: "100vh",
-              background: "var(--charcoal)",
-            }}
-          >
-            {/* Desktop sidebar — hidden on mobile via .desktop-sidebar CSS class */}
-            <aside className='desktop-sidebar'>
-              {/* Logo */}
-              <div
-                style={{
-                  padding: "20px 20px 18px",
-                  borderBottom: "1px solid var(--border)",
-                  flexShrink: 0,
-                }}
-              >
-                <Image
-                  src='/tp-logo-gold-white.png'
-                  alt='TruePoint TCG'
-                  width={130}
-                  height={30}
-                  style={{ objectFit: "contain", objectPosition: "left" }}
-                  priority
-                />
-              </div>
-
-              {/* Search */}
-              <div
-                style={{
-                  padding: "12px 0 4px",
-                  borderBottom: "1px solid var(--border)",
-                }}
-              >
-                <GlobalSearch />
-              </div>
-
-              {/* Primary nav */}
-              <nav style={{ padding: "12px 10px", flex: 1, overflow: "auto" }}>
+    <EmailVerificationGate>
+      <CollectionProvider>
+        <PendingActionProvider>
+          <PlanProvider>
+            <div
+              style={{
+                display: "flex",
+                minHeight: "100vh",
+                background: "var(--charcoal)",
+              }}
+            >
+              {/* Desktop sidebar — hidden on mobile via .desktop-sidebar CSS class */}
+              <aside className='desktop-sidebar'>
+                {/* Logo */}
                 <div
                   style={{
-                    fontSize: 10,
-                    color: "var(--text-dim)",
-                    letterSpacing: "0.08em",
-                    fontFamily: "DM Mono, monospace",
-                    padding: "6px 10px 8px",
+                    padding: "20px 20px 18px",
+                    borderBottom: "1px solid var(--border)",
+                    flexShrink: 0,
                   }}
                 >
-                  NAVIGATION
+                  <Image
+                    src='/tp-logo-gold-white.png'
+                    alt='TruePoint TCG'
+                    width={130}
+                    height={30}
+                    style={{ objectFit: "contain", objectPosition: "left" }}
+                    priority
+                  />
                 </div>
 
-                {NAV_ITEMS.map((item) => {
-                  if (item.href === ROUTES.INVENTORY) {
+                {/* Search */}
+                <div
+                  style={{
+                    padding: "12px 0 4px",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <GlobalSearch />
+                </div>
+
+                {/* Primary nav */}
+                <nav
+                  style={{ padding: "12px 10px", flex: 1, overflow: "auto" }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-dim)",
+                      letterSpacing: "0.08em",
+                      fontFamily: "DM Mono, monospace",
+                      padding: "6px 10px 8px",
+                    }}
+                  >
+                    NAVIGATION
+                  </div>
+
+                  {NAV_ITEMS.map((item) => {
+                    if (item.href === ROUTES.INVENTORY) {
+                      return (
+                        <InventoryNavItem key={item.href} pathname={pathname} />
+                      );
+                    }
                     return (
-                      <InventoryNavItem key={item.href} pathname={pathname} />
+                      <NavLink
+                        key={item.href}
+                        href={item.href}
+                        label={item.label}
+                        icon={item.icon}
+                        pathname={pathname}
+                        exact={item.href === ROUTES.DASHBOARD}
+                      />
                     );
-                  }
-                  return (
+                  })}
+
+                  <div
+                    style={{
+                      height: 1,
+                      background: "var(--border)",
+                      margin: "12px 10px",
+                    }}
+                  />
+
+                  {BOTTOM_ITEMS.map((item) => (
                     <NavLink
                       key={item.href}
                       href={item.href}
                       label={item.label}
                       icon={item.icon}
                       pathname={pathname}
-                      exact={item.href === ROUTES.DASHBOARD}
                     />
-                  );
-                })}
+                  ))}
 
+                  {isAdmin && (
+                    <NavLink
+                      href={ROUTES.ADMIN}
+                      label='Admin'
+                      icon='⬡'
+                      pathname={pathname}
+                    />
+                  )}
+                </nav>
+
+                {/* User footer */}
                 <div
                   style={{
-                    height: 1,
-                    background: "var(--border)",
-                    margin: "12px 10px",
-                  }}
-                />
-
-                {BOTTOM_ITEMS.map((item) => (
-                  <NavLink
-                    key={item.href}
-                    href={item.href}
-                    label={item.label}
-                    icon={item.icon}
-                    pathname={pathname}
-                  />
-                ))}
-
-                {isAdmin && (
-                  <NavLink
-                    href={ROUTES.ADMIN}
-                    label='Admin'
-                    icon='⬡'
-                    pathname={pathname}
-                  />
-                )}
-              </nav>
-
-              {/* User footer */}
-              <div
-                style={{
-                  borderTop: "1px solid var(--border)",
-                  padding: "14px 14px",
-                  flexShrink: 0,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginBottom: 10,
+                    borderTop: "1px solid var(--border)",
+                    padding: "14px 14px",
+                    flexShrink: 0,
                   }}
                 >
                   <div
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: "50%",
-                      background: "rgba(201,168,76,0.2)",
-                      border: "1px solid rgba(201,168,76,0.3)",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
+                      gap: 10,
+                      marginBottom: 10,
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "var(--gold)",
-                        fontFamily: "DM Mono, monospace",
-                      }}
-                    >
-                      {(username ?? userEmail ?? "U").charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div
                       style={{
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: "var(--text-primary)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        width: 32,
+                        height: 32,
+                        borderRadius: "50%",
+                        background: "rgba(201,168,76,0.2)",
+                        border: "1px solid rgba(201,168,76,0.3)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
                       }}
                     >
-                      {username ? `@${username}` : "My Account"}
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "var(--gold)",
+                          fontFamily: "DM Mono, monospace",
+                        }}
+                      >
+                        {(username ?? userEmail ?? "U").charAt(0).toUpperCase()}
+                      </span>
                     </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--text-dim)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {userEmail}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: "var(--text-primary)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {username ? `@${username}` : "My Account"}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-dim)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {userEmail}
+                      </div>
                     </div>
                   </div>
+                  <button
+                    onClick={handleSignOut}
+                    style={{
+                      width: "100%",
+                      padding: "7px 12px",
+                      borderRadius: 6,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text-dim)",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      transition: "border-color 0.15s ease, color 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "var(--red)";
+                      e.currentTarget.style.color = "var(--red)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "var(--border)";
+                      e.currentTarget.style.color = "var(--text-dim)";
+                    }}
+                  >
+                    <span style={{ fontSize: 12 }}>↪</span>
+                    Sign out
+                  </button>
                 </div>
-                <button
-                  onClick={handleSignOut}
-                  style={{
-                    width: "100%",
-                    padding: "7px 12px",
-                    borderRadius: 6,
-                    border: "1px solid var(--border)",
-                    background: "transparent",
-                    color: "var(--text-dim)",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    transition: "border-color 0.15s ease, color 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "var(--red)";
-                    e.currentTarget.style.color = "var(--red)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "var(--border)";
-                    e.currentTarget.style.color = "var(--text-dim)";
-                  }}
-                >
-                  <span style={{ fontSize: 12 }}>↪</span>
-                  Sign out
-                </button>
-              </div>
-            </aside>
+              </aside>
 
-            {/* Main content area */}
-            <main className='app-main'>
-              {/* Mobile-only header with logo */}
-              <header className='mobile-header'>
-                <Image
-                  src='/tp-logo-gold-white.png'
-                  alt='TruePoint TCG'
-                  width={110}
-                  height={26}
-                  style={{ objectFit: "contain" }}
-                  priority
-                />
-              </header>
+              {/* Main content area */}
+              <main className='app-main'>
+                {/* Mobile-only header with logo */}
+                <header className='mobile-header'>
+                  <Image
+                    src='/tp-logo-gold-white.png'
+                    alt='TruePoint TCG'
+                    width={110}
+                    height={26}
+                    style={{ objectFit: "contain" }}
+                    priority
+                  />
+                </header>
 
-              {/* Page content */}
-              <div className='app-content'>{children}</div>
+                {/* Page content */}
+                <div className='app-content'>{children}</div>
 
-              {/* Mobile sticky search — visible only on /dashboard */}
-              <MobileDashboardSearch pathname={pathname} />
-            </main>
+                {/* Mobile sticky search — visible only on /dashboard */}
+                <MobileDashboardSearch pathname={pathname} />
+              </main>
 
-            {/* Mobile bottom nav — hidden on desktop */}
-            <MobileBottomNav pathname={pathname} />
-          </div>
-        </PlanProvider>
-      </PendingActionProvider>
-    </CollectionProvider>
+              {/* Mobile bottom nav — hidden on desktop */}
+              <MobileBottomNav pathname={pathname} />
+            </div>
+          </PlanProvider>
+        </PendingActionProvider>
+      </CollectionProvider>
+    </EmailVerificationGate>
   );
 }
