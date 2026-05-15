@@ -30,135 +30,7 @@ const BOTTOM_ITEMS = [
   { href: ROUTES.SETTINGS, label: "Settings", icon: "⚙" },
 ] as const;
 
-// ─── Mobile bottom nav — 6 tabs ───────────────────────────────────────────────
-type MobileNavItem = {
-  href: string;
-  label: string;
-  matchPaths: string[];
-  icon: React.ReactNode;
-};
-
-const MOBILE_NAV: MobileNavItem[] = [
-  {
-    href: ROUTES.DASHBOARD,
-    label: "Home",
-    matchPaths: ["/dashboard"],
-    icon: (
-      <svg
-        width='22'
-        height='22'
-        viewBox='0 0 24 24'
-        fill='none'
-        stroke='currentColor'
-        strokeWidth='1.8'
-        strokeLinecap='round'
-        strokeLinejoin='round'
-      >
-        <path d='M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z' />
-        <path d='M9 21V12h6v9' />
-      </svg>
-    ),
-  },
-  {
-    href: ROUTES.CARDS,
-    label: "Browse",
-    matchPaths: ["/cards"],
-    icon: (
-      <svg
-        width='22'
-        height='22'
-        viewBox='0 0 24 24'
-        fill='none'
-        stroke='currentColor'
-        strokeWidth='1.8'
-        strokeLinecap='round'
-        strokeLinejoin='round'
-      >
-        <rect x='2' y='4' width='13' height='17' rx='2' />
-        <path d='M15 8h5a2 2 0 012 2v9a2 2 0 01-2 2h-5' />
-        <path d='M6 9h5M6 13h5M6 17h3' />
-      </svg>
-    ),
-  },
-  {
-    href: ROUTES.INVENTORY,
-    label: "Inventory",
-    matchPaths: ["/inventory", "/master-sets"],
-    icon: (
-      <svg
-        width='22'
-        height='22'
-        viewBox='0 0 24 24'
-        fill='none'
-        stroke='currentColor'
-        strokeWidth='1.8'
-        strokeLinecap='round'
-        strokeLinejoin='round'
-      >
-        <path d='M21 8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z' />
-        <path d='M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12' />
-      </svg>
-    ),
-  },
-  {
-    href: ROUTES.PORTFOLIO,
-    label: "Portfolio",
-    matchPaths: ["/portfolio"],
-    icon: (
-      <svg
-        width='22'
-        height='22'
-        viewBox='0 0 24 24'
-        fill='none'
-        stroke='currentColor'
-        strokeWidth='1.8'
-        strokeLinecap='round'
-        strokeLinejoin='round'
-      >
-        <polyline points='22 12 18 12 15 21 9 3 6 12 2 12' />
-      </svg>
-    ),
-  },
-  {
-    href: ROUTES.GRADING,
-    label: "Grading",
-    matchPaths: ["/grading", "/centering"],
-    icon: (
-      <svg
-        width='22'
-        height='22'
-        viewBox='0 0 24 24'
-        fill='none'
-        stroke='currentColor'
-        strokeWidth='1.8'
-        strokeLinecap='round'
-        strokeLinejoin='round'
-      >
-        <polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' />
-      </svg>
-    ),
-  },
-  {
-    href: ROUTES.SETTINGS,
-    label: "Profile",
-    matchPaths: ["/settings", "/admin"],
-    icon: (
-      <svg
-        width='22'
-        height='22'
-        viewBox='0 0 24 24'
-        fill='none'
-        stroke='currentColor'
-        strokeWidth='1.8'
-        strokeLinecap='round'
-        strokeLinejoin='round'
-      >
-        <path d='M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2' />
-        <circle cx='12' cy='7' r='4' />
-      </svg>
-    ),
-  },
-];
+// (mobile bottom-nav data removed — replaced by slide-out drawer)
 
 // ─── Desktop sidebar nav link ─────────────────────────────────────────────────
 function NavLink({
@@ -211,52 +83,223 @@ function NavLink({
   );
 }
 
-// ─── Mobile bottom nav ────────────────────────────────────────────────────────
-function MobileBottomNav({ pathname }: { pathname: string }) {
-  return (
-    <nav
-      className='mobile-bottom-nav'
-      role='navigation'
-      aria-label='Mobile navigation'
-    >
-      {MOBILE_NAV.map((item) => {
-        const isActive = item.matchPaths.some((p) =>
-          p === "/dashboard" ? pathname === p : pathname.startsWith(p),
-        );
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className='mobile-nav-item'
-            aria-current={isActive ? "page" : undefined}
-            style={{ color: isActive ? "var(--gold)" : "var(--text-dim)" }}
-          >
-            <span
-              className='mobile-nav-icon'
-              style={{ color: isActive ? "var(--gold)" : "var(--text-dim)" }}
-            >
-              {item.icon}
-            </span>
-            <span
-              className='mobile-nav-label'
-              style={{ color: isActive ? "var(--gold)" : "var(--text-dim)" }}
-            >
-              {item.label}
-            </span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
+// ─── Mobile slide-out drawer ──────────────────────────────────────────────────
+// Replaces the bottom tab bar on mobile. Opens from the hamburger button in
+// the mobile header, closes on link tap, backdrop tap, or Escape.
 
-// ─── Mobile sticky search — only on dashboard ─────────────────────────────────
-function MobileDashboardSearch({ pathname }: { pathname: string }) {
-  if (pathname !== ROUTES.DASHBOARD) return null;
+function MobileDrawer({
+  open,
+  onClose,
+  pathname,
+  isAdmin,
+  username,
+  userEmail,
+  onSignOut,
+}: {
+  open: boolean;
+  onClose: () => void;
+  pathname: string;
+  isAdmin: boolean;
+  username: string | null;
+  userEmail: string | null;
+  onSignOut: () => void;
+}) {
+  // Lock body scroll while the drawer is open
+  useEffect(() => {
+    if (open) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const allItems = [...NAV_ITEMS, ...BOTTOM_ITEMS];
+
   return (
-    <div className='mobile-dashboard-search'>
-      <GlobalSearch />
-    </div>
+    <>
+      {/* Backdrop */}
+      <div
+        className={`mobile-drawer-backdrop${open ? " open" : ""}`}
+        onClick={onClose}
+        aria-hidden='true'
+      />
+
+      {/* Drawer panel */}
+      <aside
+        className={`mobile-drawer${open ? " open" : ""}`}
+        role='dialog'
+        aria-modal='true'
+        aria-label='Navigation menu'
+      >
+        {/* Header with logo + close */}
+        <div className='mobile-drawer-head'>
+          <Image
+            src='/tp-logo-gold-white.png'
+            alt='TruePoint TCG'
+            width={120}
+            height={28}
+            style={{ objectFit: "contain" }}
+            priority
+          />
+          <button
+            onClick={onClose}
+            aria-label='Close menu'
+            className='mobile-drawer-close'
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Search inside the drawer */}
+        <div className='mobile-drawer-search'>
+          <GlobalSearch />
+        </div>
+
+        {/* Nav links */}
+        <nav className='mobile-drawer-nav'>
+          <div className='mobile-drawer-section-label'>NAVIGATION</div>
+          {allItems.map((item) => {
+            const isActive =
+              item.href === ROUTES.DASHBOARD
+                ? pathname === item.href
+                : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className='mobile-drawer-link'
+                style={{
+                  color: isActive ? "var(--gold)" : "var(--text-primary)",
+                  background: isActive ? "rgba(201,168,76,0.1)" : "transparent",
+                }}
+              >
+                <span
+                  style={{
+                    width: 22,
+                    textAlign: "center",
+                    color: isActive ? "var(--gold)" : "var(--text-dim)",
+                  }}
+                >
+                  {item.icon}
+                </span>
+                {item.label}
+              </Link>
+            );
+          })}
+
+          {isAdmin && (
+            <Link
+              href={ROUTES.ADMIN}
+              onClick={onClose}
+              className='mobile-drawer-link'
+              style={{
+                color: pathname.startsWith(ROUTES.ADMIN)
+                  ? "var(--gold)"
+                  : "var(--text-primary)",
+                background: pathname.startsWith(ROUTES.ADMIN)
+                  ? "rgba(201,168,76,0.1)"
+                  : "transparent",
+              }}
+            >
+              <span
+                style={{
+                  width: 22,
+                  textAlign: "center",
+                  color: "var(--text-dim)",
+                }}
+              >
+                ⬡
+              </span>
+              Admin
+            </Link>
+          )}
+        </nav>
+
+        {/* User footer */}
+        <div className='mobile-drawer-foot'>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                background: "rgba(201,168,76,0.2)",
+                border: "1px solid rgba(201,168,76,0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--gold)",
+                  fontFamily: "DM Mono, monospace",
+                }}
+              >
+                {(username ?? userEmail ?? "U").charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "var(--text-primary)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {username ? `@${username}` : "My Account"}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {userEmail}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              onClose();
+              onSignOut();
+            }}
+            className='mobile-drawer-signout'
+          >
+            <span style={{ fontSize: 12 }}>↪</span> Sign out
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -569,7 +612,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const supabase = createClient();
+
+  // Close the mobile drawer whenever the route changes
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setDrawerOpen(false);
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [pathname]);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -878,8 +930,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
               {/* Main content area */}
               <main className='app-main'>
-                {/* Mobile-only header with logo */}
+                {/* Mobile-only header with hamburger + logo */}
                 <header className='mobile-header'>
+                  <button
+                    onClick={() => setDrawerOpen(true)}
+                    aria-label='Open menu'
+                    aria-expanded={drawerOpen}
+                    className='mobile-menu-btn'
+                  >
+                    <svg
+                      width='22'
+                      height='22'
+                      viewBox='0 0 24 24'
+                      fill='none'
+                      stroke='currentColor'
+                      strokeWidth='2'
+                      strokeLinecap='round'
+                    >
+                      <line x1='3' y1='6' x2='21' y2='6' />
+                      <line x1='3' y1='12' x2='21' y2='12' />
+                      <line x1='3' y1='18' x2='21' y2='18' />
+                    </svg>
+                  </button>
                   <Image
                     src='/tp-logo-gold-white.png'
                     alt='TruePoint TCG'
@@ -888,17 +960,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     style={{ objectFit: "contain" }}
                     priority
                   />
+                  {/* Spacer to keep logo centered against the menu button */}
+                  <div style={{ width: 22 }} />
                 </header>
 
                 {/* Page content */}
                 <div className='app-content'>{children}</div>
-
-                {/* Mobile sticky search — visible only on /dashboard */}
-                <MobileDashboardSearch pathname={pathname} />
               </main>
 
-              {/* Mobile bottom nav — hidden on desktop */}
-              <MobileBottomNav pathname={pathname} />
+              {/* Mobile slide-out drawer — replaces the bottom tab bar */}
+              <MobileDrawer
+                open={drawerOpen}
+                onClose={() => setDrawerOpen(false)}
+                pathname={pathname}
+                isAdmin={isAdmin}
+                username={username}
+                userEmail={userEmail}
+                onSignOut={handleSignOut}
+              />
             </div>
           </PlanProvider>
         </PendingActionProvider>
