@@ -488,7 +488,7 @@ export default function SettingsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [plan, setPlan] = useState<string>("collector");
+  const [plan, setPlan] = useState<string>("starter");
 
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [devicesRefreshing, setDevicesRefreshing] = useState(false);
