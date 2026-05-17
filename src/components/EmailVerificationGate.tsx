@@ -9,6 +9,10 @@
 // IMPORTANT: this is application-enforced verification (Option 2).
 // Place this ONCE at the (app) layout level. Do NOT scatter it across
 // individual pages.
+//
+// Behavior on error: redirect to /verify-email rather than fail open.
+// If we can't determine status, assume unverified — safer for a verification
+// gate. The /verify-email page has a resend button and will work fine.
 
 import { useEffect, useState, ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -45,10 +49,11 @@ export default function EmailVerificationGate({
         });
       } catch (err) {
         console.error("[EmailVerificationGate] status check failed", err);
-        // On failure, treat as verified to avoid locking users out due to
-        // transient API errors. Backend gates also enforce this.
+        // Fail CLOSED: if we can't determine status, treat as unverified.
+        // Verification is a security boundary — better to over-redirect
+        // than to let an unverified user slip into the app.
         if (!cancelled) {
-          setState({ loading: false, verified: true });
+          setState({ loading: false, verified: false });
         }
       }
     })();

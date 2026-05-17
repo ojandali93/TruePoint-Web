@@ -1,9 +1,16 @@
 "use client";
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "../../lib/supabase";
 import { ROUTES } from "../../constants/routes";
+
+// Routes inside (auth) that should NOT auto-redirect logged-in users to
+// the dashboard. Logged-in-but-unverified users need to be able to sit
+// on /verify-email and click the resend button. Without this exclusion,
+// the auth layout would bounce them to /dashboard, then the
+// EmailVerificationGate would bounce them back here — infinite loop.
+const AUTH_ROUTES_TO_KEEP = ["/verify-email"];
 
 export default function AuthLayout({
   children,
@@ -11,15 +18,22 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = createClient();
 
   useEffect(() => {
+    // Don't bounce logged-in users away from /verify-email. Verification
+    // is enforced by the (app) layout's EmailVerificationGate — letting
+    // verified users sit here is fine, and unverified users NEED to be here.
+    if (AUTH_ROUTES_TO_KEEP.includes(pathname)) return;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         router.replace(ROUTES.DASHBOARD);
       }
     });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   return (
     <div
