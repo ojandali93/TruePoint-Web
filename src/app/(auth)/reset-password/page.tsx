@@ -27,13 +27,12 @@ const schema = z
 type FormData = z.infer<typeof schema>;
 
 type State =
+  | { kind: "landing"; token: string } // user landed with a token, hasn't clicked yet
   | { kind: "exchanging" }
   | { kind: "ready" }
   | { kind: "invalid"; message: string }
   | { kind: "success" };
 
-// ─── Outer component: wraps the inner one in a Suspense boundary so
-//     useSearchParams() doesn't bail out of static page generation. ────────
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={<ResetPasswordLoading />}>
@@ -58,13 +57,27 @@ function ResetPasswordLoading() {
   );
 }
 
-// ─── Inner component: actual reset-password logic ──────────────────────────
 function ResetPasswordInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
 
-  const [state, setState] = useState<State>({ kind: "exchanging" });
+  const [state, setState] = useState<State>(() => {
+    // Initialize from URL on first render
+    const code = searchParams.get("code");
+    const tokenHash = searchParams.get("token_hash");
+    const token = code ?? tokenHash;
+
+    if (!token) {
+      return {
+        kind: "invalid",
+        message:
+          "This password reset link is invalid. Request a new one from the login page.",
+      };
+    }
+    return { kind: "landing", token };
+  });
+
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -73,77 +86,52 @@ function ResetPasswordInner() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
-  // ─── On mount: validate the token and establish a recovery session ─────
-  useEffect(() => {
-    const exchangeToken = async () => {
-      const code = searchParams.get("code");
-      const tokenHash = searchParams.get("token_hash");
-      const type = searchParams.get("type");
+  // Manually triggered on button click — prevents email scanners /
+  // Gmail's link prefetcher from consuming the one-time token before the
+  // user actually opens the page in their browser.
+  const handleVerifyAndContinue = async () => {
+    if (state.kind !== "landing") return;
+    setState({ kind: "exchanging" });
 
-      // Supabase password-reset emails may include the token under either
-      // `code=...` (PKCE-flow projects) or `token_hash=...` (legacy projects).
-      // In both cases, we use verifyOtp() rather than exchangeCodeForSession()
-      // because verifyOtp doesn't require a PKCE code_verifier — meaning the
-      // link works even when opened in a different browser/device than the
-      // one that requested it (e.g., requested from the mobile app, opened
-      // on a desktop browser).
-      const token = code ?? tokenHash;
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: state.token,
+      type: "recovery",
+    });
 
-      if (token) {
-        if (type && type !== "recovery") {
-          setState({
-            kind: "invalid",
-            message: "This link isn't a password reset link.",
-          });
-          return;
-        }
-
-        const { error } = await supabase.auth.verifyOtp({
-          token_hash: token,
-          type: "recovery",
-        });
-
-        if (error) {
-          console.error("[reset-password] verifyOtp failed:", error);
-          setState({
-            kind: "invalid",
-            message:
-              "This password reset link is invalid or has expired. Request a new one from the login page.",
-          });
-          return;
-        }
-        setState({ kind: "ready" });
-        return;
-      }
-
-      // ─── Implicit flow fallback (hash fragment) ───────────────────────
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        setState({ kind: "ready" });
-        return;
-      }
-
-      await new Promise((r) => setTimeout(r, 250));
-      const recheck = await supabase.auth.getSession();
-      if (recheck.data.session) {
-        setState({ kind: "ready" });
-        return;
-      }
-
+    if (error) {
+      console.error("[reset-password] verifyOtp failed:", error);
       setState({
         kind: "invalid",
         message:
           "This password reset link is invalid or has expired. Request a new one from the login page.",
       });
-    };
+      return;
+    }
+    setState({ kind: "ready" });
+  };
 
-    void exchangeToken();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Also: if there's an error fragment in the URL (e.g. otp_expired from
+  // a prefetched / reused link), surface it immediately rather than letting
+  // the user click "Continue" to a known-broken token.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (
+      !hash.includes("error_code=otp_expired") &&
+      !hash.includes("error=access_denied")
+    ) {
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setState({
+        kind: "invalid",
+        message:
+          "This password reset link has already been used or has expired. Request a new one from the login page.",
+      });
+    }, 0);
+    return () => window.clearTimeout(t);
   }, []);
 
-  // ─── On submit: update the password ─────────────────────────────────────
   const onSubmit = async (data: FormData) => {
     setServerError(null);
     try {
@@ -156,9 +144,7 @@ function ResetPasswordInner() {
         return;
       }
 
-      // Force sign-out so the user re-authenticates with the new password.
       await supabase.auth.signOut();
-
       setState({ kind: "success" });
 
       setTimeout(() => {
@@ -168,6 +154,59 @@ function ResetPasswordInner() {
       setServerError("Something went wrong. Please try again.");
     }
   };
+
+  // ─── Render: landing (token in URL, user hasn't clicked yet) ───────────
+  if (state.kind === "landing") {
+    return (
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: "32px",
+        }}
+      >
+        <h1
+          style={{
+            fontSize: 22,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 6,
+            letterSpacing: "0.02em",
+          }}
+        >
+          Reset your password
+        </h1>
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--text-secondary)",
+            marginBottom: 28,
+          }}
+        >
+          Tap continue to confirm it&apos;s you and choose a new password.
+        </p>
+
+        <Button onClick={handleVerifyAndContinue}>Continue to reset</Button>
+
+        <div
+          style={{
+            marginTop: 20,
+            paddingTop: 20,
+            borderTop: "1px solid var(--border)",
+            textAlign: "center",
+          }}
+        >
+          <Link
+            href={ROUTES.LOGIN}
+            style={{ fontSize: 13, color: "var(--text-secondary)" }}
+          >
+            Back to login
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // ─── Render: exchanging token ───────────────────────────────────────────
   if (state.kind === "exchanging") {
