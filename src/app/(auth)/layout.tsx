@@ -10,7 +10,7 @@ import { ROUTES } from "../../constants/routes";
 // on /verify-email and click the resend button. Without this exclusion,
 // the auth layout would bounce them to /dashboard, then the
 // EmailVerificationGate would bounce them back here — infinite loop.
-const AUTH_ROUTES_TO_KEEP = ["/verify-email"];
+const AUTH_ROUTES_TO_KEEP = ["/verify-email", "/reset-password"];
 
 export default function AuthLayout({
   children,
