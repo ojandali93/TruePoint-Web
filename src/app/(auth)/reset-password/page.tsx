@@ -96,10 +96,10 @@ function ResetPasswordInner() {
         }
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) {
+          console.error("[reset-password] exchange failed:", error);
           setState({
             kind: "invalid",
-            message:
-              "This password reset link is invalid or has expired. Request a new one from the login page.",
+            message: `Token error: ${error.message} (status ${(error as any).status ?? "n/a"})`,
           });
           return;
         }
