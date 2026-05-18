@@ -76,30 +76,39 @@ function ResetPasswordInner() {
   // ─── On mount: validate the token and establish a recovery session ─────
   useEffect(() => {
     const exchangeToken = async () => {
-      // Two possible flows depending on Supabase project config:
-      //   1. PKCE flow: ?code=...&type=recovery  (newer projects)
-      //   2. Implicit flow: #access_token=...&type=recovery (older projects)
-      //
-      // We handle both so this page works regardless of which is enabled.
-
       const code = searchParams.get("code");
+      const tokenHash = searchParams.get("token_hash");
       const type = searchParams.get("type");
 
-      // ─── PKCE flow ──────────────────────────────────────────────────────
-      if (code) {
-        if (type !== "recovery") {
+      // Supabase password-reset emails may include the token under either
+      // `code=...` (PKCE-flow projects) or `token_hash=...` (legacy projects).
+      // In both cases, we use verifyOtp() rather than exchangeCodeForSession()
+      // because verifyOtp doesn't require a PKCE code_verifier — meaning the
+      // link works even when opened in a different browser/device than the
+      // one that requested it (e.g., requested from the mobile app, opened
+      // on a desktop browser).
+      const token = code ?? tokenHash;
+
+      if (token) {
+        if (type && type !== "recovery") {
           setState({
             kind: "invalid",
             message: "This link isn't a password reset link.",
           });
           return;
         }
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: token,
+          type: "recovery",
+        });
+
         if (error) {
-          console.error("[reset-password] exchange failed:", error);
+          console.error("[reset-password] verifyOtp failed:", error);
           setState({
             kind: "invalid",
-            message: `Token error: ${error.message} (status ${(error as any).status ?? "n/a"})`,
+            message:
+              "This password reset link is invalid or has expired. Request a new one from the login page.",
           });
           return;
         }
@@ -107,9 +116,7 @@ function ResetPasswordInner() {
         return;
       }
 
-      // ─── Implicit flow (hash fragment) ─────────────────────────────────
-      // The Supabase client picks this up automatically via detectSessionInUrl,
-      // so by the time this useEffect runs, the session may already be set.
+      // ─── Implicit flow fallback (hash fragment) ───────────────────────
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -118,7 +125,6 @@ function ResetPasswordInner() {
         return;
       }
 
-      // Hash might still be parsing — give it one more shot after a tick.
       await new Promise((r) => setTimeout(r, 250));
       const recheck = await supabase.auth.getSession();
       if (recheck.data.session) {
