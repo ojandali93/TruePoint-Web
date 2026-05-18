@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -32,7 +32,34 @@ type State =
   | { kind: "invalid"; message: string }
   | { kind: "success" };
 
+// ─── Outer component: wraps the inner one in a Suspense boundary so
+//     useSearchParams() doesn't bail out of static page generation. ────────
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<ResetPasswordLoading />}>
+      <ResetPasswordInner />
+    </Suspense>
+  );
+}
+
+function ResetPasswordLoading() {
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        padding: "32px",
+        textAlign: "center",
+      }}
+    >
+      <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>Loading…</p>
+    </div>
+  );
+}
+
+// ─── Inner component: actual reset-password logic ──────────────────────────
+function ResetPasswordInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -83,7 +110,6 @@ export default function ResetPasswordPage() {
       // ─── Implicit flow (hash fragment) ─────────────────────────────────
       // The Supabase client picks this up automatically via detectSessionInUrl,
       // so by the time this useEffect runs, the session may already be set.
-      // We just need to check whether we have a recovery session.
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -125,12 +151,10 @@ export default function ResetPasswordPage() {
       }
 
       // Force sign-out so the user re-authenticates with the new password.
-      // This avoids the recovery session lingering with elevated privileges.
       await supabase.auth.signOut();
 
       setState({ kind: "success" });
 
-      // Auto-redirect to login after a moment so the success state is visible.
       setTimeout(() => {
         router.push(ROUTES.LOGIN);
       }, 2000);
@@ -202,7 +226,7 @@ export default function ResetPasswordPage() {
       <div
         style={{
           background: "var(--surface)",
-          border: "1px solid var(--green-30, rgba(61,170,110,0.3))",
+          border: "1px solid rgba(61,170,110,0.3)",
           borderRadius: 12,
           padding: "32px",
           textAlign: "center",
