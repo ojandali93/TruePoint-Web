@@ -6,7 +6,6 @@ export interface Profile {
   currency: string;
   preferred_grading_company: string;
   show_market_values: boolean;
-  is_pro_member: boolean;
   created_at: string;
   updated_at: string;
 }

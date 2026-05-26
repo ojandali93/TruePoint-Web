@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "6248MU8UP2.app.truepointinc.truepointtcg",
+        "paths": [
+          "/browse/*",
+          "/cards/*",
+          "/sets/*",
+          "/master-sets/*",
+          "/products/*"
+        ]
+      }
+    ]
+  }
+}
