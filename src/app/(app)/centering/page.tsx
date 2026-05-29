@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useCallback, useEffect } from "react";
+import Link from "next/link";
 import api from "../../../lib/api";
 import { createBrowserClient } from "@supabase/ssr";
 
@@ -1726,8 +1727,6 @@ function CenteringCanvas({
     imageUrl,
     borders,
     zoom,
-    panX,
-    panY,
     outerColor,
     innerColor,
     rotation,
@@ -2675,6 +2674,28 @@ export default function CenteringPage() {
               {tab.label}
             </button>
           ))}
+          <div
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <Link
+              href='/centering/reports'
+              style={{
+                fontSize: 11,
+                color: "var(--gold)",
+                textDecoration: "none",
+                padding: "4px 10px",
+                borderRadius: 6,
+                fontFamily: "DM Mono, monospace",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Open full library →
+            </Link>
+          </div>
         </div>
 
         {pageTab === "reports" ? (

@@ -7,6 +7,7 @@ import { createClient } from "../../../lib/supabase";
 import { ROUTES } from "../../../constants/routes";
 import { deactivateCurrentDevice } from "@/lib/deviceTracking";
 import { getDeviceId } from "@/lib/device";
+import FeedbackModal from "@/components/FeedbackModal";
 import api from "@/lib/api";
 
 interface Profile {
@@ -494,6 +495,7 @@ export default function SettingsPage() {
   const [devicesRefreshing, setDevicesRefreshing] = useState(false);
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [showDeactivate, setShowDeactivate] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const loadDevices = useCallback(async () => {
     setDevicesRefreshing(true);
@@ -872,6 +874,12 @@ export default function SettingsPage() {
             label='Contact support'
             sublabel='Tap the chat bubble (bottom right) on any page'
           />
+          <SettingsRow
+            icon='📨'
+            label='Send feedback'
+            sublabel='Report a bug, request a feature, or tell us what you think'
+            onClick={() => setFeedbackOpen(true)}
+          />
           <div style={{ borderBottom: "none" }}>
             <SettingsRow
               icon='📄'
@@ -995,6 +1003,11 @@ export default function SettingsPage() {
           onConfirm={handleDeactivate}
         />
       )}
+
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+      />
     </div>
   );
 }

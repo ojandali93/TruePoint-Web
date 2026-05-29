@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable @next/next/no-img-element */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
@@ -12,6 +13,8 @@ import {
   Area,
   AreaChart,
   Legend,
+  ReferenceDot,
+  ReferenceLine,
 } from "recharts";
 import api from "../../../lib/api";
 import { FeatureGate } from "@/components/PlanGuards";
@@ -559,6 +562,17 @@ export default function PortfolioPage() {
   const [snapshotting, setSnapshotting] = useState(false);
   const [snapshotDone, setSnapshotDone] = useState(false);
 
+  // 4.2 — Tap-to-pin: store the date string of the currently pinned chart point.
+  // null = not pinned (default tooltip behavior). Tapping a point pins it; tapping
+  // the same point again (or the X) clears the pin.
+  const [pinnedDate, setPinnedDate] = useState<string | null>(null);
+
+  // Clear pin whenever the range or chart mode changes — old date may not exist
+  // in the new series, and the pinned point would render in a misleading place.
+  useEffect(() => {
+    setPinnedDate(null);
+  }, [range, chartMode]);
+
   const { activeCollectionId, collections, setActiveCollectionId } =
     useCollections();
   const hasMultipleCollections = collections.length > 1;
@@ -566,27 +580,30 @@ export default function PortfolioPage() {
     ? `&collectionId=${activeCollectionId}`
     : "";
 
-  const load = useCallback(async (days = 90) => {
-    try {
-      const res = await api.get<{ data: any }>(
-        `/portfolio?days=${days}${collectionParam}`,
-      );
-      const p = res.data.data;
-      // Backend uses totalValue/totalGainLoss/totalGainLossPct/totalCostBasis;
-      // adapt to dashboard's preferred names so the rest of the file reads work unchanged.
-      setData({
-        ...p,
-        currentValue: p.totalValue ?? p.currentValue ?? 0,
-        gainLoss: p.totalGainLoss ?? p.gainLoss ?? 0,
-        gainLossPct: p.totalGainLossPct ?? p.gainLossPct ?? null,
-        costBasis: p.totalCostBasis ?? p.costBasis ?? 0,
-      });
-    } catch (err) {
-      console.error("[Portfolio] Load failed:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (days = 90) => {
+      try {
+        const res = await api.get<{ data: any }>(
+          `/portfolio?days=${days}${collectionParam}`,
+        );
+        const p = res.data.data;
+        // Backend uses totalValue/totalGainLoss/totalGainLossPct/totalCostBasis;
+        // adapt to dashboard's preferred names so the rest of the file reads work unchanged.
+        setData({
+          ...p,
+          currentValue: p.totalValue ?? p.currentValue ?? 0,
+          gainLoss: p.totalGainLoss ?? p.gainLoss ?? 0,
+          gainLossPct: p.totalGainLossPct ?? p.gainLossPct ?? null,
+          costBasis: p.totalCostBasis ?? p.costBasis ?? 0,
+        });
+      } catch (err) {
+        console.error("[Portfolio] Load failed:", err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [collectionParam],
+  );
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -972,10 +989,73 @@ export default function PortfolioPage() {
               >
                 Value over time
               </div>
-              <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                {filteredHistory.length} data point
-                {filteredHistory.length !== 1 ? "s" : ""}
-              </div>
+              {pinnedDate ? (
+                (() => {
+                  const pt = filteredHistory.find((p) => p.date === pinnedDate);
+                  if (!pt) {
+                    return (
+                      <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                        {filteredHistory.length} data point
+                        {filteredHistory.length !== 1 ? "s" : ""}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        fontSize: 11,
+                        color: "var(--gold)",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      <span>📍 {formatDateLong(pinnedDate)}</span>
+                      <span style={{ color: "var(--text-primary)" }}>
+                        {fmt(pt.totalValue)}
+                      </span>
+                      {pt.gainLoss !== undefined && (
+                        <span
+                          style={{
+                            color: pt.gainLoss >= 0 ? "#3DAA6E" : "#C94C4C",
+                          }}
+                        >
+                          {pt.gainLoss >= 0 ? "+" : ""}
+                          {fmt(pt.gainLoss)}
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPinnedDate(null);
+                        }}
+                        title='Clear pin'
+                        aria-label='Clear pin'
+                        style={{
+                          background: "transparent",
+                          border: "1px solid var(--gold-dim)",
+                          borderRadius: 4,
+                          color: "var(--gold)",
+                          fontSize: 10,
+                          padding: "0 6px",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  {filteredHistory.length} data point
+                  {filteredHistory.length !== 1 ? "s" : ""}
+                  {filteredHistory.length > 1 && " · tap a point to pin"}
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {/* Chart mode */}
@@ -1071,6 +1151,14 @@ export default function PortfolioPage() {
               <AreaChart
                 data={filteredHistory}
                 margin={{ top: 5, right: 5, bottom: 5, left: 0 }}
+                onClick={(state: any) => {
+                  // recharts passes activeLabel = the X-axis value of the
+                  // nearest data point. Toggle pin if same point clicked again.
+                  const label = state?.activeLabel;
+                  if (!label) return;
+                  setPinnedDate((prev) => (prev === label ? null : label));
+                }}
+                style={{ cursor: "pointer" }}
               >
                 <defs>
                   <linearGradient
@@ -1145,6 +1233,29 @@ export default function PortfolioPage() {
                   dot={false}
                   activeDot={{ r: 3, strokeWidth: 0 }}
                 />
+                {/* Pinned marker — vertical scrub line + dot. Click any point
+                    to pin; click the same point (or the X above chart) to clear. */}
+                {pinnedDate && (
+                  <>
+                    <ReferenceLine
+                      x={pinnedDate}
+                      stroke='var(--gold)'
+                      strokeDasharray='3 3'
+                      strokeWidth={1}
+                    />
+                    <ReferenceDot
+                      x={pinnedDate}
+                      y={
+                        filteredHistory.find((p) => p.date === pinnedDate)
+                          ?.totalValue ?? 0
+                      }
+                      r={5}
+                      fill='var(--gold)'
+                      stroke='#0D0E11'
+                      strokeWidth={2}
+                    />
+                  </>
+                )}
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -1152,6 +1263,12 @@ export default function PortfolioPage() {
               <AreaChart
                 data={filteredHistory}
                 margin={{ top: 5, right: 5, bottom: 5, left: 0 }}
+                onClick={(state: any) => {
+                  const label = state?.activeLabel;
+                  if (!label) return;
+                  setPinnedDate((prev) => (prev === label ? null : label));
+                }}
+                style={{ cursor: "pointer" }}
               >
                 <defs>
                   <linearGradient id='rawGrad' x1='0' y1='0' x2='0' y2='1'>
@@ -1234,6 +1351,16 @@ export default function PortfolioPage() {
                   dot={false}
                   stackId='1'
                 />
+                {/* Pinned marker — vertical scrub line on the breakdown chart.
+                    No dot here since the areas are stacked. */}
+                {pinnedDate && (
+                  <ReferenceLine
+                    x={pinnedDate}
+                    stroke='var(--gold)'
+                    strokeDasharray='3 3'
+                    strokeWidth={1}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           )}
