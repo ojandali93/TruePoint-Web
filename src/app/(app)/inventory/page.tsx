@@ -15,6 +15,7 @@ import api from "../../../lib/api";
 type ItemType = "raw_card" | "graded_card" | "sealed_product";
 type GradingCompany = "PSA" | "BGS" | "CGC" | "SGC" | "TAG";
 type FilterTab = "all" | "raw_card" | "graded_card" | "sealed_product";
+type ConditionGrade = "NM" | "LP" | "MP" | "HP" | "DM";
 
 interface CardRef {
   id: string;
@@ -52,6 +53,12 @@ interface InventoryItem {
   purchase_date: string | null;
   notes: string | null;
   added_at: string;
+  // Phase 2 schema sync — fields web has historically ignored
+  quantity: number;
+  condition: ConditionGrade | null;
+  variant_type: string | null;
+  manual_market_value: number | null;
+  manual_market_value_source: string | null;
   card: CardRef | null;
   product: ProductRef | null;
   marketValue: MarketValue;
@@ -85,6 +92,16 @@ interface SearchResult {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const GRADING_COMPANIES: GradingCompany[] = ["PSA", "BGS", "CGC", "SGC", "TAG"];
+
+// Raw-card condition grades (TCG standard short codes)
+const CONDITIONS: ConditionGrade[] = ["NM", "LP", "MP", "HP", "DM"];
+const CONDITION_LABELS: Record<ConditionGrade, string> = {
+  NM: "Near Mint",
+  LP: "Lightly Played",
+  MP: "Moderately Played",
+  HP: "Heavily Played",
+  DM: "Damaged",
+};
 
 const COMPANY_COLORS: Record<GradingCompany, string> = {
   PSA: "#C9A84C",
@@ -525,6 +542,73 @@ function ItemCard({
             ` · ${PRODUCT_TYPE_LABELS[item.product.product_type] ?? item.product.product_type}`}
         </div>
 
+        {/* Phase 2 row badges — quantity / condition / variant */}
+        {(item.quantity > 1 ||
+          (item.item_type === "raw_card" &&
+            (item.condition || item.variant_type))) && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+              marginBottom: 10,
+            }}
+          >
+            {item.quantity > 1 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 500,
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  background: "rgba(201,168,76,0.15)",
+                  color: "var(--gold)",
+                  border: "1px solid rgba(201,168,76,0.3)",
+                  fontFamily: "DM Mono, monospace",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                ×{item.quantity}
+              </span>
+            )}
+            {item.item_type === "raw_card" && item.condition && (
+              <span
+                title={CONDITION_LABELS[item.condition]}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 500,
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  background: "rgba(61,170,110,0.15)",
+                  color: "#3DAA6E",
+                  border: "1px solid rgba(61,170,110,0.3)",
+                  fontFamily: "DM Mono, monospace",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {item.condition}
+              </span>
+            )}
+            {item.item_type === "raw_card" && item.variant_type && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 500,
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  background: "rgba(155,142,219,0.15)",
+                  color: "#9B8EDB",
+                  border: "1px solid rgba(155,142,219,0.3)",
+                  fontFamily: "DM Mono, monospace",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {item.variant_type}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Serial number */}
         {item.serial_number && (
           <div
@@ -665,6 +749,18 @@ function AddEditModal({
   );
   const [notes, setNotes] = useState(editItem?.notes ?? "");
 
+  // Phase 2 schema sync — fields web previously dropped
+  const [quantity, setQuantity] = useState<number>(editItem?.quantity ?? 1);
+  const [condition, setCondition] = useState<ConditionGrade | "">(
+    editItem?.condition ?? "NM",
+  );
+  const [variantType, setVariantType] = useState<string>(
+    editItem?.variant_type ?? "",
+  );
+  const [manualMarketValue, setManualMarketValue] = useState<string>(
+    editItem?.manual_market_value?.toString() ?? "",
+  );
+
   // Card / product search
   const [cardSearch, setCardSearch] = useState("");
   const [selectedCard, setSelectedCard] = useState<SearchResult | null>(
@@ -679,6 +775,53 @@ function AddEditModal({
 
   const searchType = itemType === "sealed_product" ? "products" : "cards";
   const { results, loading: searchLoading } = useSearch(cardSearch, searchType);
+
+  // 2.4 — Fetch real variants for the selected card so the picker shows only
+  // variants that actually exist (filtered for phantoms: low_price must be set).
+  // We use the same /cards/sets/:setId/prices endpoint the set browser uses;
+  // it's bulk-keyed by cardId and already cached server-side.
+  const [availableVariants, setAvailableVariants] = useState<string[]>([]);
+  const variantsEnabled =
+    itemType === "raw_card" && !!selectedCard?.set_id && !!selectedCard?.id;
+  const displayedVariants = variantsEnabled ? availableVariants : [];
+
+  useEffect(() => {
+    if (!variantsEnabled) return;
+    let cancelled = false;
+    api
+      .get<{
+        data: Record<
+          string,
+          { variant: string; market: number | null; low: number | null }[]
+        >;
+      }>(`/cards/sets/${selectedCard.set_id}/prices`)
+      .then((res) => {
+        if (cancelled) return;
+        const rows = res.data.data?.[selectedCard.id!] ?? [];
+        const variants = Array.from(
+          new Set(
+            rows
+              .filter((r) => r.low != null) // phantom filter — match set browser
+              .map((r) => r.variant)
+              .filter(Boolean),
+          ),
+        );
+        setAvailableVariants(variants);
+        // If current variantType isn't in the list, default to the first variant
+        if (variants.length > 0 && !variants.includes(variantType)) {
+          setVariantType(variants[0]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableVariants([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // variantType intentionally omitted from deps — we only fetch when the
+    // card or item type changes, not when the user picks a different variant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variantsEnabled, selectedCard?.id, selectedCard?.set_id]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -709,7 +852,17 @@ function AddEditModal({
         purchasePrice: purchasePrice ? Number(purchasePrice) : null,
         purchaseDate: purchaseDate || null,
         notes: notes || null,
+        // 2.5 + 2.6 — fields newly synced from mobile parity
+        quantity: Math.max(1, Math.floor(quantity || 1)),
+        manualMarketValue: manualMarketValue ? Number(manualMarketValue) : null,
+        manualMarketValueSource: manualMarketValue ? "manual" : null,
       };
+
+      // Condition + variant_type are raw-card specific
+      if (itemType === "raw_card") {
+        body.condition = condition || "NM";
+        body.variantType = variantType || null;
+      }
 
       if (!isEdit) {
         body.itemType = itemType;
@@ -1214,6 +1367,170 @@ function AddEditModal({
             </div>
           )}
 
+          {/* ─── Phase 2 — Quantity / Condition / Variant fields ──────────── */}
+
+          {/* Quantity stepper — shown for all item types */}
+          <div>
+            <label style={labelStyle}>Quantity</label>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0,
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                overflow: "hidden",
+                width: "fit-content",
+              }}
+            >
+              <button
+                type='button'
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                disabled={quantity <= 1}
+                style={{
+                  width: 36,
+                  height: 36,
+                  border: "none",
+                  background: "transparent",
+                  color:
+                    quantity <= 1 ? "var(--text-dim)" : "var(--text-secondary)",
+                  fontSize: 16,
+                  cursor: quantity <= 1 ? "default" : "pointer",
+                  fontFamily: "inherit",
+                }}
+                aria-label='Decrease quantity'
+              >
+                −
+              </button>
+              <input
+                type='number'
+                min={1}
+                max={999}
+                value={quantity}
+                onChange={(e) =>
+                  setQuantity(
+                    Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                  )
+                }
+                style={{
+                  width: 56,
+                  textAlign: "center",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-primary)",
+                  fontSize: 14,
+                  fontFamily: "DM Mono, monospace",
+                  outline: "none",
+                }}
+              />
+              <button
+                type='button'
+                onClick={() => setQuantity((q) => Math.min(999, q + 1))}
+                style={{
+                  width: 36,
+                  height: 36,
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-secondary)",
+                  fontSize: 16,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+                aria-label='Increase quantity'
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Condition — raw cards only */}
+          {itemType === "raw_card" && (
+            <div>
+              <label style={labelStyle}>Condition</label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {CONDITIONS.map((c) => (
+                  <button
+                    key={c}
+                    type='button'
+                    onClick={() => setCondition(c)}
+                    title={CONDITION_LABELS[c]}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      border: `1px solid ${condition === c ? "var(--gold)" : "var(--border)"}`,
+                      background:
+                        condition === c
+                          ? "rgba(201,168,76,0.12)"
+                          : "var(--surface-2)",
+                      color:
+                        condition === c
+                          ? "var(--gold)"
+                          : "var(--text-secondary)",
+                      fontSize: 12,
+                      fontFamily: "DM Mono, monospace",
+                      letterSpacing: "0.04em",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              {condition && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                    marginTop: 6,
+                  }}
+                >
+                  {CONDITION_LABELS[condition]}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Variant picker — raw cards only, and only when there's a choice */}
+          {itemType === "raw_card" && displayedVariants.length > 1 && (
+            <div>
+              <label style={labelStyle}>Variant / Printing</label>
+              <select
+                value={variantType}
+                onChange={(e) => setVariantType(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  cursor: "pointer",
+                }}
+              >
+                {displayedVariants.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Single-variant info note (when there's only one variant) */}
+          {itemType === "raw_card" &&
+            displayedVariants.length === 1 &&
+            selectedCard && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                  fontFamily: "DM Mono, monospace",
+                  background: "var(--surface-2)",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                }}
+              >
+                Variant: <strong>{displayedVariants[0]}</strong>
+              </div>
+            )}
+
           {/* Purchase info */}
           <div
             style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
@@ -1239,6 +1556,22 @@ function AddEditModal({
                 style={{ ...inputStyle, colorScheme: "dark" }}
               />
             </div>
+          </div>
+
+          {/* Manual market value override — advanced, optional */}
+          <div>
+            <label style={labelStyle}>
+              Manual market value (optional, overrides auto-pricing)
+            </label>
+            <input
+              type='number'
+              min='0'
+              step='0.01'
+              value={manualMarketValue}
+              onChange={(e) => setManualMarketValue(e.target.value)}
+              placeholder='Leave blank to use auto-priced value'
+              style={{ ...inputStyle, fontFamily: "DM Mono, monospace" }}
+            />
           </div>
 
           <div>
@@ -1856,7 +2189,18 @@ export default function InventoryPage() {
       const res = await api.get<{
         data: { items: InventoryItem[]; summary: InventorySummary };
       }>(`/inventory${params}`);
-      setItems(res.data.data.items ?? []);
+      // Normalize: backend may omit new fields on older rows; ensure shape
+      // matches the local InventoryItem type so render code can rely on it.
+      const normalized = (res.data.data.items ?? []).map((it: any) => ({
+        ...it,
+        quantity:
+          typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : 1,
+        condition: it.condition ?? null,
+        variant_type: it.variant_type ?? null,
+        manual_market_value: it.manual_market_value ?? null,
+        manual_market_value_source: it.manual_market_value_source ?? null,
+      })) as InventoryItem[];
+      setItems(normalized);
       setSummary(res.data.data.summary ?? null);
     } catch (err) {
       console.error("[Inventory] Load failed:", err);
