@@ -1,15 +1,43 @@
 "use client";
-import { useState, use, useEffect } from "react";
+
+/**
+ * Set detail page — /cards/[setId]
+ *
+ * Two tabs:
+ *   • Cards    — uses useSetGrid (pattern collapse, phantom filter, variant dots)
+ *   • Products — uses useSetProducts (sealed booster boxes, ETBs, etc.)
+ *
+ * Pure render: data comes from hooks, no migrations or transforms inline.
+ *
+ * Visual style: web's gold/charcoal language. Variant indicators borrow
+ * mobile's colored-dot vocabulary (see VariantDots component).
+ */
+
+import { useMemo, useState, use } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { useSetCards } from "../../../../hooks/useCards";
-import api from "../../../../lib/api";
-import QuickAddInventory from "../../../../components/cards/QuickAddInventory";
+
 import { useCollections } from "../../../../context/CollectionContext";
+import { useSetGrid, type GridCard } from "../../../../hooks/useSetGrid";
+import {
+  useSetProducts,
+  getProductMarketPrice,
+  productTypeLabel,
+  type SetProduct,
+} from "../../../../hooks/useProducts";
+import {
+  VariantDots,
+  VariantPriceList,
+  priceRangeText,
+} from "../../../../components/cards/VariantDots";
+import QuickAddInventory from "../../../../components/cards/QuickAddInventory";
 import type { QuickAddVariant } from "../../../../components/cards/QuickAddInventory";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Sorting ─────────────────────────────────────────────────────────────────
+
+type SortKey = "number" | "name" | "rarity";
+type TabKey = "cards" | "products";
 
 const RARITY_ORDER = [
   "Special Illustration Rare",
@@ -24,37 +52,29 @@ const RARITY_ORDER = [
   "Promo",
 ];
 
-type SortKey = "number" | "name" | "rarity";
-type TabKey = "cards" | "products";
-
-interface ProductPrice {
-  source: "tcgplayer" | "cardmarket" | "ebay";
-  low_price: number | null;
-  mid_price: number | null;
-  high_price: number | null;
-  market_price: number | null;
-  fetched_at: string;
+/**
+ * Sort so STANDARD-NUMBERED cards come first (by leading integer), then
+ * non-numbered / prefixed (promos, RC1, GG01) at the end.
+ */
+function compareCardNumbers(a: string, b: string): number {
+  const lead = (n: string): number | null => {
+    const m = (n ?? "").trim().match(/^(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  };
+  const an = lead(a);
+  const bn = lead(b);
+  if (an !== null && bn === null) return -1;
+  if (an === null && bn !== null) return 1;
+  if (an !== null && bn !== null) {
+    if (an !== bn) return an - bn;
+    return (a ?? "").localeCompare(b ?? "");
+  }
+  return (a ?? "").localeCompare(b ?? "");
 }
 
-interface Product {
-  id: string;
-  name: string;
-  set_id: string;
-  product_type: string;
-  image_url: string | null;
-  product_price_cache: ProductPrice[];
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const fmt = (val: number | null) => (val != null ? `$${val.toFixed(2)}` : "—");
-
-const productTypeLabel = (type: string) =>
-  type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
-const rarityAbbr = (rarity: string | null | undefined): string => {
-  if (!rarity) return "";
-  const map: Record<string, string> = {
+const rarityAbbr = (r: string | null | undefined): string => {
+  if (!r) return "";
+  const m: Record<string, string> = {
     "Special Illustration Rare": "SIR",
     "Hyper Rare": "HR",
     "Illustration Rare": "IR",
@@ -66,429 +86,10 @@ const rarityAbbr = (rarity: string | null | undefined): string => {
     Common: "C",
     Promo: "P",
   };
-  return map[rarity] ?? rarity.charAt(0);
+  return m[r] ?? r.charAt(0);
 };
 
-const SOURCE_META = {
-  tcgplayer: { label: "TCGPlayer", color: "#378ADD" },
-  cardmarket: { label: "CardMarket", color: "#3DAA6E" },
-  ebay: { label: "eBay Sold", color: "#D85A30" },
-} as const;
-
-// ─── Products grid ────────────────────────────────────────────────────────────
-
-function ProductsGrid({ setId }: { setId: string }) {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    api
-      .get<{ data: Product[] }>(`/cards/sealed/${setId}`)
-      .then((res) => setProducts(res.data.data ?? []))
-      .catch(() => setProducts([]))
-      .finally(() => setLoading(false));
-  }, [setId]);
-
-  const productTypes = [...new Set(products.map((p) => p.product_type))];
-
-  const filtered = products.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
-    const matchType = !filterType || p.product_type === filterType;
-    return matchSearch && matchType;
-  });
-
-  if (loading) {
-    return (
-      <div
-        style={{
-          textAlign: "center",
-          padding: 80,
-          color: "var(--text-dim)",
-          fontSize: 13,
-        }}
-      >
-        Loading products...
-      </div>
-    );
-  }
-
-  if (!products.length) {
-    return (
-      <div
-        style={{
-          textAlign: "center",
-          padding: "60px 24px",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-        }}
-      >
-        <div style={{ fontSize: 32, marginBottom: 16 }}>□</div>
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            marginBottom: 8,
-          }}
-        >
-          No sealed products yet
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--text-secondary)",
-            lineHeight: 1.6,
-          }}
-        >
-          Sealed product data for this set hasn&apos;t been synced yet.
-          <br />
-          Trigger a product sync from the admin panel to populate this.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      {/* Product controls */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 24,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder='Search products...'
-            style={{
-              width: "100%",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "9px 14px 9px 36px",
-              fontSize: 13,
-              color: "var(--text-primary)",
-              fontFamily: "inherit",
-              outline: "none",
-            }}
-          />
-          <span
-            style={{
-              position: "absolute",
-              left: 12,
-              top: "50%",
-              transform: "translateY(-50%)",
-              fontSize: 14,
-              color: "var(--text-dim)",
-            }}
-          >
-            ⌕
-          </span>
-        </div>
-
-        {/* Product type filter */}
-        {productTypes.length > 1 && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => setFilterType(null)}
-              style={{
-                padding: "7px 14px",
-                borderRadius: 6,
-                border: `1px solid ${!filterType ? "var(--gold)" : "var(--border)"}`,
-                background: !filterType
-                  ? "rgba(201,168,76,0.12)"
-                  : "var(--surface)",
-                color: !filterType ? "var(--gold)" : "var(--text-secondary)",
-                fontSize: 12,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              All
-            </button>
-            {productTypes.map((type) => (
-              <button
-                key={type}
-                onClick={() => setFilterType(type === filterType ? null : type)}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: 6,
-                  border: `1px solid ${filterType === type ? "var(--gold)" : "var(--border)"}`,
-                  background:
-                    filterType === type
-                      ? "rgba(201,168,76,0.12)"
-                      : "var(--surface)",
-                  color:
-                    filterType === type
-                      ? "var(--gold)"
-                      : "var(--text-secondary)",
-                  fontSize: 12,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {productTypeLabel(type)}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <p
-        style={{
-          fontSize: 13,
-          color: "var(--text-secondary)",
-          marginBottom: 20,
-        }}
-      >
-        {filtered.length} product{filtered.length !== 1 ? "s" : ""}
-      </p>
-
-      {/* Products grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-          gap: 16,
-        }}
-      >
-        {filtered.map((product) => {
-          const tcg = product.product_price_cache?.find(
-            (p) => p.source === "tcgplayer",
-          );
-          const cm = product.product_price_cache?.find(
-            (p) => p.source === "cardmarket",
-          );
-          const ebay = product.product_price_cache?.find(
-            (p) => p.source === "ebay",
-          );
-          const hasPrices = tcg || cm || ebay;
-
-          // Best market price for the hero display
-          const heroPrice =
-            tcg?.market_price ?? cm?.market_price ?? ebay?.market_price ?? null;
-
-          return (
-            <div
-              key={product.id}
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                overflow: "hidden",
-                transition: "border-color 0.15s ease, transform 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLDivElement).style.borderColor =
-                  "var(--gold-dim)";
-                (e.currentTarget as HTMLDivElement).style.transform =
-                  "translateY(-2px)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLDivElement).style.borderColor =
-                  "var(--border)";
-                (e.currentTarget as HTMLDivElement).style.transform =
-                  "translateY(0)";
-              }}
-            >
-              {/* Product image placeholder */}
-              <div
-                style={{
-                  height: 140,
-                  background: "var(--surface-2)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderBottom: "1px solid var(--border)",
-                  position: "relative",
-                }}
-              >
-                {product.image_url ? (
-                  <Image
-                    src={product.image_url}
-                    alt={product.name}
-                    fill
-                    style={{ objectFit: "contain", padding: 16 }}
-                  />
-                ) : (
-                  <div style={{ textAlign: "center" }}>
-                    <div
-                      style={{
-                        fontSize: 32,
-                        color: "var(--text-dim)",
-                        marginBottom: 6,
-                      }}
-                    >
-                      □
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-dim)",
-                        fontFamily: "DM Mono, monospace",
-                        letterSpacing: "0.06em",
-                      }}
-                    >
-                      {productTypeLabel(product.product_type).toUpperCase()}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Product info */}
-              <div style={{ padding: "16px 18px" }}>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "var(--gold)",
-                    letterSpacing: "0.08em",
-                    fontFamily: "DM Mono, monospace",
-                    marginBottom: 6,
-                  }}
-                >
-                  {productTypeLabel(product.product_type).toUpperCase()}
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: "var(--text-primary)",
-                    marginBottom: 14,
-                    lineHeight: 1.4,
-                    minHeight: 36,
-                  }}
-                >
-                  {product.name}
-                </div>
-
-                {/* Hero price */}
-                {heroPrice && (
-                  <div
-                    style={{
-                      fontSize: 24,
-                      fontWeight: 500,
-                      color: "var(--gold)",
-                      fontFamily: "DM Mono, monospace",
-                      marginBottom: 12,
-                    }}
-                  >
-                    {fmt(heroPrice)}
-                  </div>
-                )}
-
-                {/* Price breakdown */}
-                {hasPrices ? (
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
-                  >
-                    {(
-                      [
-                        { source: "tcgplayer", data: tcg },
-                        { source: "cardmarket", data: cm },
-                        { source: "ebay", data: ebay },
-                      ] as const
-                    ).map(({ source, data }) => {
-                      const meta = SOURCE_META[source];
-                      if (!data) return null;
-                      return (
-                        <div
-                          key={source}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            padding: "6px 10px",
-                            background: "var(--surface-2)",
-                            borderRadius: 6,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: 6,
-                                height: 6,
-                                borderRadius: "50%",
-                                background: meta.color,
-                                flexShrink: 0,
-                              }}
-                            />
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "var(--text-secondary)",
-                              }}
-                            >
-                              {meta.label}
-                            </span>
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <span
-                              style={{
-                                fontSize: 12,
-                                fontWeight: 500,
-                                color: data.market_price
-                                  ? "var(--text-primary)"
-                                  : "var(--text-dim)",
-                                fontFamily: "DM Mono, monospace",
-                              }}
-                            >
-                              {fmt(data.market_price)}
-                            </span>
-                            {data.low_price && data.high_price && (
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  color: "var(--text-dim)",
-                                  fontFamily: "DM Mono, monospace",
-                                }}
-                              >
-                                {fmt(data.low_price)} – {fmt(data.high_price)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      padding: "10px",
-                      background: "var(--surface-2)",
-                      borderRadius: 6,
-                      textAlign: "center",
-                      fontSize: 12,
-                      color: "var(--text-dim)",
-                    }}
-                  >
-                    Price data pending sync
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SetPage({
   params,
@@ -496,85 +97,54 @@ export default function SetPage({
   params: Promise<{ setId: string }>;
 }) {
   const { setId } = use(params);
-  const { cards, loading, error } = useSetCards(setId);
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<SortKey>("number");
-  const [filterRarity, setFilterRarity] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { activeCollectionId } = useCollections();
 
-  // Price map: cardId → array of variant price entries
-  const [priceMap, setPriceMap] = useState<
-    Record<string, { variant: string; market: number | null; source: string }[]>
-  >({});
+  const { cards, loading, error } = useSetGrid(setId);
 
-  useEffect(() => {
-    if (!setId) return;
-    api
-      .get<{
-        data: Record<
-          string,
-          { variant: string; market: number | null; source: string }[]
-        >;
-      }>(`/cards/${setId}/prices`)
-      .then((r) => setPriceMap(r.data.data ?? {}))
-      .catch(() => {});
-  }, [setId]);
-
-  // Build variants for a card from its price entries (dedupe by variant)
-  const getCardVariants = (cardId: string): QuickAddVariant[] => {
-    const entries = priceMap[cardId] ?? [];
-    const seen = new Set<string>();
-    return entries.reduce<QuickAddVariant[]>((acc, e) => {
-      if (!seen.has(e.variant)) {
-        seen.add(e.variant);
-        acc.push({
-          variant: e.variant,
-          label: e.variant,
-          marketPrice: e.market,
-        });
-      }
-      return acc;
-    }, []);
-  };
-
-  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>(
     searchParams.get("tab") === "products" ? "products" : "cards",
   );
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("number");
+  const [filterRarity, setFilterRarity] = useState<string | null>(null);
 
-  const rarities = [
-    ...new Set(cards.map((c) => c.rarity).filter(Boolean)),
-  ].sort((a, b) => RARITY_ORDER.indexOf(a!) - RARITY_ORDER.indexOf(b!));
+  // Rarities derived from the grid (code cards already filtered upstream)
+  const rarities = useMemo(() => {
+    const uniq = Array.from(
+      new Set(cards.map((g) => g.card.rarity).filter(Boolean)),
+    ) as string[];
+    return uniq.sort(
+      (a, b) => RARITY_ORDER.indexOf(a) - RARITY_ORDER.indexOf(b),
+    );
+  }, [cards]);
 
-  const types = [...new Set(cards.flatMap((c) => c.types ?? []))];
+  const filtered = useMemo(() => {
+    return [...cards]
+      .filter((g) => {
+        const term = search.trim().toLowerCase();
+        const matchSearch =
+          !term ||
+          g.card.name.toLowerCase().includes(term) ||
+          g.card.number.includes(term);
+        const matchRarity = !filterRarity || g.card.rarity === filterRarity;
+        return matchSearch && matchRarity;
+      })
+      .sort((a, b) => {
+        if (sortBy === "number")
+          return compareCardNumbers(a.card.number, b.card.number);
+        if (sortBy === "name") return a.card.name.localeCompare(b.card.name);
+        if (sortBy === "rarity")
+          return (
+            RARITY_ORDER.indexOf(a.card.rarity ?? "") -
+            RARITY_ORDER.indexOf(b.card.rarity ?? "")
+          );
+        return 0;
+      });
+  }, [cards, search, filterRarity, sortBy]);
 
-  const filtered = cards
-    .filter((c) => {
-      const matchSearch =
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.number.includes(search);
-      const matchRarity = !filterRarity || c.rarity === filterRarity;
-      const matchType = !filterType || c.types?.includes(filterType);
-      return matchSearch && matchRarity && matchType;
-    })
-    .sort((a, b) => {
-      if (sortBy === "number")
-        return (
-          parseInt(a.number) - parseInt(b.number) ||
-          a.number.localeCompare(b.number)
-        );
-      if (sortBy === "name") return a.name.localeCompare(b.name);
-      if (sortBy === "rarity")
-        return (
-          RARITY_ORDER.indexOf(a.rarity ?? "") -
-          RARITY_ORDER.indexOf(b.rarity ?? "")
-        );
-      return 0;
-    });
-
-  const setName = cards[0]?.set?.name ?? setId;
+  const setName = cards[0]?.card.set?.name ?? setId;
 
   return (
     <div style={{ padding: "32px 40px", maxWidth: 1400, margin: "0 auto" }}>
@@ -640,15 +210,13 @@ export default function SetPage({
           marginBottom: 28,
         }}
       >
-        {(
-          [
-            {
-              key: "cards",
-              label: `Cards ${!loading ? `(${cards.length})` : ""}`,
-            },
-            { key: "products", label: "Sealed Products" },
-          ] as { key: TabKey; label: string }[]
-        ).map((tab) => (
+        {[
+          {
+            key: "cards" as const,
+            label: `Cards ${!loading ? `(${cards.length})` : ""}`,
+          },
+          { key: "products" as const, label: "Sealed Products" },
+        ].map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -674,307 +242,651 @@ export default function SetPage({
         ))}
       </div>
 
-      {/* ── Cards tab ──────────────────────────────────────────────────────── */}
       {activeTab === "cards" && (
-        <>
-          {/* Controls */}
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              marginBottom: 24,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder='Search by name or number...'
-                style={{
-                  width: "100%",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "9px 14px 9px 36px",
-                  fontSize: 13,
-                  color: "var(--text-primary)",
-                  fontFamily: "inherit",
-                  outline: "none",
-                }}
-              />
-              <span
-                style={{
-                  position: "absolute",
-                  left: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  fontSize: 14,
-                  color: "var(--text-dim)",
-                }}
-              >
-                ⌕
-              </span>
-            </div>
-
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortKey)}
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: "9px 14px",
-                fontSize: 12,
-                color: "var(--text-secondary)",
-                fontFamily: "DM Mono, monospace",
-                outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              <option value='number'>Sort: Number</option>
-              <option value='name'>Sort: Name</option>
-              <option value='rarity'>Sort: Rarity</option>
-            </select>
-
-            {rarities.length > 0 && (
-              <select
-                value={filterRarity ?? ""}
-                onChange={(e) => setFilterRarity(e.target.value || null)}
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "9px 14px",
-                  fontSize: 12,
-                  color: "var(--text-secondary)",
-                  fontFamily: "inherit",
-                  outline: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <option value=''>All rarities</option>
-                {rarities.map((r) => (
-                  <option key={r} value={r!}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {types.length > 0 && (
-              <select
-                value={filterType ?? ""}
-                onChange={(e) => setFilterType(e.target.value || null)}
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "9px 14px",
-                  fontSize: 12,
-                  color: "var(--text-secondary)",
-                  fontFamily: "inherit",
-                  outline: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <option value=''>All types</option>
-                {types.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {loading && (
-            <div
-              style={{
-                textAlign: "center",
-                padding: 80,
-                color: "var(--text-dim)",
-                fontSize: 13,
-              }}
-            >
-              Loading cards...
-            </div>
-          )}
-
-          {error && (
-            <div
-              style={{
-                textAlign: "center",
-                padding: 40,
-                color: "var(--red)",
-                fontSize: 13,
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          {!loading && !error && filtered.length === 0 && (
-            <div
-              style={{
-                textAlign: "center",
-                padding: 60,
-                color: "var(--text-dim)",
-                fontSize: 13,
-              }}
-            >
-              No cards match your filters.
-            </div>
-          )}
-
-          {/* Card grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-              gap: 12,
-            }}
-          >
-            {filtered.map((card) => {
-              const cardVariants = getCardVariants(card.id);
-              return (
-                <div
-                  key={card.id}
-                  style={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                    padding: 12,
-                    cursor: "default",
-                    textAlign: "left",
-                    transition: "border-color 0.15s ease, transform 0.15s ease",
-                    fontFamily: "inherit",
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor =
-                      "var(--gold-dim)";
-                    (e.currentTarget as HTMLDivElement).style.transform =
-                      "translateY(-3px)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor =
-                      "var(--border)";
-                    (e.currentTarget as HTMLDivElement).style.transform =
-                      "translateY(0)";
-                  }}
-                >
-                  {/* Card image — clicking navigates to detail */}
-                  {card.images?.small && (
-                    <div
-                      style={{
-                        marginBottom: 8,
-                        borderRadius: 6,
-                        overflow: "hidden",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => router.push(`/cards/${setId}/${card.id}`)}
-                    >
-                      <Image
-                        src={card.images.small}
-                        alt={card.name}
-                        width={150}
-                        height={210}
-                        style={{
-                          width: "100%",
-                          height: "auto",
-                          display: "block",
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Name — clicking navigates */}
-                  <div
-                    onClick={() => router.push(`/cards/${setId}/${card.id}`)}
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: "var(--text-primary)",
-                      marginBottom: 3,
-                      lineHeight: 1.3,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {card.name}
-                  </div>
-
-                  {/* Number + rarity */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 2,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-dim)",
-                        fontFamily: "DM Mono, monospace",
-                      }}
-                    >
-                      #{card.number}
-                    </span>
-                    {card.rarity && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          color:
-                            card.rarity === "Special Illustration Rare"
-                              ? "var(--gold)"
-                              : card.rarity === "Hyper Rare"
-                                ? "#C9A84C"
-                                : card.rarity === "Illustration Rare"
-                                  ? "#8A8FA0"
-                                  : "var(--text-dim)",
-                          fontFamily: "DM Mono, monospace",
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        {rarityAbbr(card.rarity)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Quick add — variants with qty stepper */}
-                  <QuickAddInventory
-                    cardId={card.id}
-                    cardName={card.name}
-                    setId={setId}
-                    setName={card.set?.name ?? setId}
-                    cardNumber={card.number}
-                    imageSmall={card.images?.small ?? null}
-                    variants={
-                      cardVariants.length > 0
-                        ? cardVariants
-                        : [
-                            {
-                              variant: "normal",
-                              label: "Normal",
-                              marketPrice: null,
-                            },
-                          ]
-                    }
-                    collectionId={activeCollectionId}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </>
+        <CardsTab
+          loading={loading}
+          error={error}
+          filtered={filtered}
+          totalCards={cards.length}
+          search={search}
+          setSearch={setSearch}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          rarities={rarities}
+          filterRarity={filterRarity}
+          setFilterRarity={setFilterRarity}
+          setId={setId}
+          setName={setName}
+          activeCollectionId={activeCollectionId}
+          onCardTap={(g) => router.push(`/cards/${setId}/${g.card.id}`)}
+        />
       )}
 
-      {/* ── Products tab ───────────────────────────────────────────────────── */}
-      {activeTab === "products" && <ProductsGrid setId={setId} />}
+      {activeTab === "products" && <ProductsTab setId={setId} />}
     </div>
   );
 }
+
+// ─── Cards tab ───────────────────────────────────────────────────────────────
+
+function CardsTab({
+  loading,
+  error,
+  filtered,
+  totalCards,
+  search,
+  setSearch,
+  sortBy,
+  setSortBy,
+  rarities,
+  filterRarity,
+  setFilterRarity,
+  setId,
+  setName,
+  activeCollectionId,
+  onCardTap,
+}: {
+  loading: boolean;
+  error: string | null;
+  filtered: GridCard[];
+  totalCards: number;
+  search: string;
+  setSearch: (s: string) => void;
+  sortBy: SortKey;
+  setSortBy: (k: SortKey) => void;
+  rarities: string[];
+  filterRarity: string | null;
+  setFilterRarity: (r: string | null) => void;
+  setId: string;
+  setName: string;
+  activeCollectionId: string | null | undefined;
+  onCardTap: (g: GridCard) => void;
+}) {
+  return (
+    <>
+      {/* Controls */}
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          marginBottom: 24,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='Search by name or number...'
+            style={{
+              width: "100%",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "9px 14px 9px 36px",
+              fontSize: 13,
+              color: "var(--text-primary)",
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              left: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              fontSize: 14,
+              color: "var(--text-dim)",
+            }}
+          >
+            ⌕
+          </span>
+        </div>
+
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortKey)}
+          style={selectStyle}
+        >
+          <option value='number'>Sort: Number</option>
+          <option value='name'>Sort: Name</option>
+          <option value='rarity'>Sort: Rarity</option>
+        </select>
+
+        {rarities.length > 0 && (
+          <select
+            value={filterRarity ?? ""}
+            onChange={(e) => setFilterRarity(e.target.value || null)}
+            style={selectStyle}
+          >
+            <option value=''>All rarities</option>
+            {rarities.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {loading && <div style={messageStyle}>Loading cards...</div>}
+      {error && (
+        <div style={{ ...messageStyle, color: "var(--red)" }}>{error}</div>
+      )}
+
+      {!loading && !error && filtered.length === 0 && totalCards === 0 && (
+        <div style={messageStyle}>
+          No cards in this set yet. Run a catalog sync to populate.
+        </div>
+      )}
+
+      {!loading && !error && filtered.length === 0 && totalCards > 0 && (
+        <div style={messageStyle}>No cards match your filters.</div>
+      )}
+
+      {!loading && !error && filtered.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {filtered.map((g) => (
+            <CardTile
+              key={g.card.id}
+              gridCard={g}
+              setId={setId}
+              setName={setName}
+              activeCollectionId={activeCollectionId}
+              onCardTap={onCardTap}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function CardTile({
+  gridCard,
+  setId,
+  setName,
+  activeCollectionId,
+  onCardTap,
+}: {
+  gridCard: GridCard;
+  setId: string;
+  setName: string;
+  activeCollectionId: string | null | undefined;
+  onCardTap: (g: GridCard) => void;
+}) {
+  const { card, variants } = gridCard;
+  const priceText = priceRangeText(variants);
+
+  // QuickAddInventory's variants prop — never empty
+  const qaVariants: QuickAddVariant[] =
+    variants.length > 0
+      ? variants.map((v) => ({
+          variant: v.variant,
+          label: v.label,
+          marketPrice: v.market,
+        }))
+      : [{ variant: "normal", label: "Normal", marketPrice: null }];
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: 12,
+        textAlign: "left",
+        transition: "border-color 0.15s ease, transform 0.15s ease",
+        fontFamily: "inherit",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.borderColor =
+          "var(--gold-dim)";
+        (e.currentTarget as HTMLDivElement).style.transform =
+          "translateY(-2px)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
+        (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
+      }}
+    >
+      {/* Image — click to detail */}
+      {card.images?.small && (
+        <div
+          style={{
+            borderRadius: 6,
+            overflow: "hidden",
+            cursor: "pointer",
+          }}
+          onClick={() => onCardTap(gridCard)}
+        >
+          <Image
+            src={card.images.small}
+            alt={card.name}
+            width={150}
+            height={210}
+            style={{ width: "100%", height: "auto", display: "block" }}
+          />
+        </div>
+      )}
+
+      {/* Name — click to detail */}
+      <div
+        onClick={() => onCardTap(gridCard)}
+        style={{
+          fontSize: 12,
+          fontWeight: 500,
+          color: "var(--text-primary)",
+          lineHeight: 1.3,
+          cursor: "pointer",
+        }}
+      >
+        {card.name}
+      </div>
+
+      {/* Number + rarity */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10,
+            color: "var(--text-dim)",
+            fontFamily: "DM Mono, monospace",
+          }}
+        >
+          #{card.number}
+        </span>
+        {card.rarity && (
+          <span
+            style={{
+              fontSize: 9,
+              color:
+                card.rarity === "Special Illustration Rare"
+                  ? "var(--gold)"
+                  : card.rarity === "Hyper Rare"
+                    ? "#C9A84C"
+                    : "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {rarityAbbr(card.rarity)}
+          </span>
+        )}
+      </div>
+
+      {/* Price range + variant dots */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            color: "var(--green)",
+            fontWeight: 500,
+            fontFamily: "DM Mono, monospace",
+          }}
+        >
+          {priceText}
+        </span>
+        <VariantDots variants={variants} />
+      </div>
+
+      {/* Expanded per-variant prices */}
+      {variants.length > 1 && <VariantPriceList variants={variants} />}
+
+      {/* Quick add */}
+      <QuickAddInventory
+        cardId={card.id}
+        cardName={card.name}
+        setId={setId}
+        setName={card.set?.name ?? setName}
+        cardNumber={card.number}
+        imageSmall={card.images?.small ?? null}
+        variants={qaVariants}
+        collectionId={activeCollectionId}
+      />
+    </div>
+  );
+}
+
+// ─── Products tab ────────────────────────────────────────────────────────────
+
+function ProductsTab({ setId }: { setId: string }) {
+  const router = useRouter();
+  const { products, loading, error } = useSetProducts(setId);
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState<string | null>(null);
+
+  const types = useMemo(
+    () => Array.from(new Set(products.map((p) => p.product_type))),
+    [products],
+  );
+
+  const filtered = useMemo(
+    () =>
+      products.filter((p) => {
+        const matchSearch =
+          !search || p.name.toLowerCase().includes(search.toLowerCase());
+        const matchType = !filterType || p.product_type === filterType;
+        return matchSearch && matchType;
+      }),
+    [products, search, filterType],
+  );
+
+  if (loading) return <div style={messageStyle}>Loading products...</div>;
+  if (error)
+    return <div style={{ ...messageStyle, color: "var(--red)" }}>{error}</div>;
+
+  if (products.length === 0) {
+    return (
+      <div
+        style={{
+          textAlign: "center",
+          padding: "60px 24px",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 8,
+          }}
+        >
+          No sealed products yet
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            color: "var(--text-secondary)",
+            lineHeight: 1.6,
+          }}
+        >
+          Sealed product data for this set hasn&apos;t been synced.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          marginBottom: 24,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='Search products...'
+            style={{
+              width: "100%",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "9px 14px 9px 36px",
+              fontSize: 13,
+              color: "var(--text-primary)",
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              left: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              fontSize: 14,
+              color: "var(--text-dim)",
+            }}
+          >
+            ⌕
+          </span>
+        </div>
+
+        {types.length > 1 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <ProductTypeChip
+              label='All'
+              active={!filterType}
+              onClick={() => setFilterType(null)}
+            />
+            {types.map((t) => (
+              <ProductTypeChip
+                key={t}
+                label={productTypeLabel(t)}
+                active={filterType === t}
+                onClick={() => setFilterType(t === filterType ? null : t)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p
+        style={{
+          fontSize: 13,
+          color: "var(--text-secondary)",
+          marginBottom: 20,
+        }}
+      >
+        {filtered.length} product{filtered.length !== 1 ? "s" : ""}
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+          gap: 16,
+        }}
+      >
+        {filtered.map((product) => (
+          <ProductTile
+            key={product.id}
+            product={product}
+            onClick={() => router.push(`/products/${product.id}`)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductTypeChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "7px 14px",
+        borderRadius: 6,
+        border: `1px solid ${active ? "var(--gold)" : "var(--border)"}`,
+        background: active ? "rgba(201,168,76,0.12)" : "var(--surface)",
+        color: active ? "var(--gold)" : "var(--text-secondary)",
+        fontSize: 12,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ProductTile({
+  product,
+  onClick,
+}: {
+  product: SetProduct;
+  onClick: () => void;
+}) {
+  const heroPrice = getProductMarketPrice(product);
+  const typeLabel = productTypeLabel(product.product_type);
+
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        overflow: "hidden",
+        cursor: "pointer",
+        textAlign: "left",
+        fontFamily: "inherit",
+        padding: 0,
+        transition: "border-color 0.15s ease, transform 0.15s ease",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.borderColor =
+          "var(--gold-dim)";
+        (e.currentTarget as HTMLButtonElement).style.transform =
+          "translateY(-2px)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.borderColor =
+          "var(--border)";
+        (e.currentTarget as HTMLButtonElement).style.transform =
+          "translateY(0)";
+      }}
+    >
+      <div
+        style={{
+          height: 160,
+          background: "var(--surface-2)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderBottom: "1px solid var(--border)",
+          padding: 16,
+          position: "relative",
+        }}
+      >
+        {product.image_url ? (
+          <Image
+            src={product.image_url}
+            alt={product.name}
+            fill
+            style={{ objectFit: "contain", padding: 16 }}
+          />
+        ) : (
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              letterSpacing: "0.06em",
+            }}
+          >
+            {typeLabel.toUpperCase()}
+          </div>
+        )}
+      </div>
+      <div style={{ padding: "16px 18px" }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--gold)",
+            letterSpacing: "0.08em",
+            fontFamily: "DM Mono, monospace",
+            marginBottom: 6,
+          }}
+        >
+          {typeLabel.toUpperCase()}
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 10,
+            lineHeight: 1.4,
+            minHeight: 36,
+          }}
+        >
+          {product.name}
+        </div>
+        {heroPrice != null ? (
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 500,
+              color: "var(--gold)",
+              fontFamily: "DM Mono, monospace",
+            }}
+          >
+            ${heroPrice.toFixed(2)}
+          </div>
+        ) : (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text-dim)",
+            }}
+          >
+            Price unavailable
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
+const messageStyle: React.CSSProperties = {
+  textAlign: "center",
+  padding: 80,
+  color: "var(--text-dim)",
+  fontSize: 13,
+};
+
+const selectStyle: React.CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: "9px 14px",
+  fontSize: 12,
+  color: "var(--text-secondary)",
+  fontFamily: "DM Mono, monospace",
+  outline: "none",
+  cursor: "pointer",
+};
