@@ -286,7 +286,7 @@ const PLANS = [
   },
   {
     name: "Collector",
-    price: "$9.99",
+    price: "$14.99",
     cadence: "per month",
     badge: "MOST POPULAR",
     badgeColor: "#C9A84C",
@@ -307,8 +307,8 @@ const PLANS = [
   },
   {
     name: "Pro",
-    price: "$19.99",
-    cadence: "per month · $179/yr",
+    price: "$29.99",
+    cadence: "per month",
     badge: "PRO",
     badgeColor: "#BA7517",
     featured: false,

@@ -43,8 +43,8 @@ type FormData = z.infer<typeof schema>;
 
 const PLAN_META = {
   starter: { name: "Starter", price: "Free", color: "#3DAA6E" },
-  collector: { name: "Collector", price: "$9.99/mo", color: "#C9A84C" },
-  pro: { name: "Pro", price: "$19.99/mo", color: "#BA7517" },
+  collector: { name: "Collector", price: "$14.99/mo", color: "#C9A84C" },
+  pro: { name: "Pro", price: "$29.99/mo", color: "#BA7517" },
 } as const;
 
 type PlanKey = keyof typeof PLAN_META;

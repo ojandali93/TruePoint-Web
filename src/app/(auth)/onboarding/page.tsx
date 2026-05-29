@@ -53,7 +53,7 @@ const PLAN_META = {
   },
   collector: {
     name: "Collector",
-    price: "$9.99",
+    price: "$14.99",
     cadence: "per month",
     color: "#C9A84C",
     features: [
@@ -65,7 +65,7 @@ const PLAN_META = {
   },
   pro: {
     name: "Pro",
-    price: "$19.99",
+    price: "$29.99",
     cadence: "per month",
     color: "#BA7517",
     features: [
