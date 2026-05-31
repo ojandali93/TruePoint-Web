@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import api from "../../../../lib/api";
@@ -511,6 +511,12 @@ export default function MasterSetDetailPage() {
   const [search, setSearch] = useState("");
   const [pocketSize, setPocketSize] = useState<PocketSize>(9);
   const [stackVariants, setStackVariants] = useState(false);
+
+  // `binderPage` tracks the SPREAD index, not the raw page index.
+  //   Spread 0 = [Cover] | [Page 1]
+  //   Spread 1 = [Page 2] | [Page 3]
+  //   Spread N = [Page 2N] | [Page 2N+1]
+  // Advancing 1 spread advances 2 pages of slots (like a real binder).
   const [binderPage, setBinderPage] = useState(0);
 
   const load = useCallback(async () => {
@@ -576,14 +582,35 @@ export default function MasterSetDetailPage() {
 
   const displayCards = filterCards(sortCards(cards, sortBy), filterTab, search);
 
-  // Binder setup
+  // ── Binder spread setup ────────────────────────────────────────────────────
+  // Total raw pages in the binder (e.g. 200 slots / 9 pockets = 23 pages)
+  // Total spreads = cover + ceil((pages - 1) / 2) extra spreads. We use the
+  // simpler formulation: ceil((pages + 1) / 2) where the +1 accounts for the
+  // cover sitting on spread 0's left side.
   const binderSlots = expandForBinder(displayCards, stackVariants);
   const perPage = pocketSize;
   const totalPages = Math.ceil(binderSlots.length / perPage);
-  const pageSlots = binderSlots.slice(
-    binderPage * perPage,
-    (binderPage + 1) * perPage,
-  );
+  const totalSpreads = Math.max(1, Math.ceil((totalPages + 1) / 2));
+
+  // Which page indices appear on the left and right panels for the current spread.
+  // null = the cover/no-page placeholder.
+  const leftPageIndex = binderPage === 0 ? null : binderPage * 2 - 1;
+  const rightPageIndex = binderPage === 0 ? 0 : binderPage * 2;
+
+  const leftPageSlots =
+    leftPageIndex !== null && leftPageIndex < totalPages
+      ? binderSlots.slice(
+          leftPageIndex * perPage,
+          (leftPageIndex + 1) * perPage,
+        )
+      : [];
+  const rightPageSlots =
+    rightPageIndex < totalPages
+      ? binderSlots.slice(
+          rightPageIndex * perPage,
+          (rightPageIndex + 1) * perPage,
+        )
+      : [];
 
   const statusColor = progress
     ? progress.completionPct === 100
@@ -1131,7 +1158,7 @@ export default function MasterSetDetailPage() {
         {!loading && view === "binder" && (
           <div>
             <div style={{ display: "flex", gap: 12 }}>
-              {/* Left page (blank/back cover) */}
+              {/* Left page — cover on spread 0, otherwise the left page slots */}
               <div
                 style={{
                   flex: 1,
@@ -1155,19 +1182,26 @@ export default function MasterSetDetailPage() {
                     <div style={{ fontSize: 32, marginBottom: 8 }}>📒</div>
                     {progress?.setName}
                   </div>
-                ) : (
+                ) : leftPageSlots.length > 0 ? (
                   <BinderPage
-                    slots={binderSlots.slice(
-                      (binderPage - 1) * perPage,
-                      binderPage * perPage,
-                    )}
+                    slots={leftPageSlots}
                     pocketSize={pocketSize}
                     onToggle={handleToggle}
                   />
+                ) : (
+                  <div
+                    style={{
+                      color: "var(--text-dim)",
+                      fontSize: 12,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    End of binder
+                  </div>
                 )}
               </div>
 
-              {/* Right page */}
+              {/* Right page — the right page slots, or "End of binder" if past last page */}
               <div
                 style={{
                   flex: 1,
@@ -1175,17 +1209,32 @@ export default function MasterSetDetailPage() {
                   borderRadius: 8,
                   border: "1px solid var(--border)",
                   minHeight: 400,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                <BinderPage
-                  slots={pageSlots}
-                  pocketSize={pocketSize}
-                  onToggle={handleToggle}
-                />
+                {rightPageSlots.length > 0 ? (
+                  <BinderPage
+                    slots={rightPageSlots}
+                    pocketSize={pocketSize}
+                    onToggle={handleToggle}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      color: "var(--text-dim)",
+                      fontSize: 12,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    End of binder
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Pagination */}
+            {/* Pagination — navigates by spread (two pages at a time after spread 0) */}
             <div
               style={{
                 display: "flex",
@@ -1219,13 +1268,15 @@ export default function MasterSetDetailPage() {
                   fontFamily: "DM Mono, monospace",
                 }}
               >
-                Page {binderPage + 1}
+                {binderPage === 0
+                  ? `Cover · Page 1`
+                  : `Pages ${binderPage * 2}–${binderPage * 2 + 1}`}
               </span>
               <button
                 onClick={() =>
-                  setBinderPage((p) => Math.min(totalPages - 1, p + 1))
+                  setBinderPage((p) => Math.min(totalSpreads - 1, p + 1))
                 }
-                disabled={binderPage >= totalPages - 1}
+                disabled={binderPage >= totalSpreads - 1}
                 style={{
                   padding: "8px 20px",
                   borderRadius: 8,
@@ -1234,10 +1285,10 @@ export default function MasterSetDetailPage() {
                   color: "#0D0E11",
                   fontSize: 12,
                   cursor:
-                    binderPage >= totalPages - 1 ? "not-allowed" : "pointer",
+                    binderPage >= totalSpreads - 1 ? "not-allowed" : "pointer",
                   fontFamily: "inherit",
                   fontWeight: 500,
-                  opacity: binderPage >= totalPages - 1 ? 0.4 : 1,
+                  opacity: binderPage >= totalSpreads - 1 ? 0.4 : 1,
                 }}
               >
                 Next →
