@@ -135,9 +135,17 @@ function Sparkline({
   color?: string;
 }) {
   if (data.length < 2) return null;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
+
+  // Pad the y-axis range so small price movements don't render as cliffs.
+  // See PortfolioValueChart.tsx (mobile) for the same logic — kept in sync.
+  const dataMin = Math.min(...data);
+  const dataMax = Math.max(...data);
+  const dataRange = dataMax - dataMin;
+  const center = (dataMin + dataMax) / 2;
+  const minVisibleRange = Math.max(center * 0.1, dataRange * 1.5, 1);
+  const min = center - minVisibleRange / 2;
+  const range = minVisibleRange;
+
   const w = 120,
     h = 36;
   const pts = data
