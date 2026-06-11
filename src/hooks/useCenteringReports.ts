@@ -82,8 +82,21 @@ export function useCenteringReports() {
         "/centering/reports",
       );
       setReports(res.data.data ?? []);
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? "Failed to load reports");
+    } catch (err: unknown) {
+      const message =
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        err.response &&
+        typeof err.response === "object" &&
+        "data" in err.response &&
+        err.response.data &&
+        typeof err.response.data === "object" &&
+        "error" in err.response.data &&
+        typeof err.response.data.error === "string"
+          ? err.response.data.error
+          : "Failed to load reports";
+      setError(message);
       setReports([]);
     } finally {
       setLoading(false);
@@ -91,16 +104,32 @@ export function useCenteringReports() {
   }, []);
 
   useEffect(() => {
-    load();
+    const t = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(t);
   }, [load]);
 
   const remove = useCallback(async (reportId: string) => {
     try {
       await api.delete(`/centering/reports/${reportId}`);
       setReports((prev) => prev.filter((r) => r.id !== reportId));
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message =
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        err.response &&
+        typeof err.response === "object" &&
+        "data" in err.response &&
+        err.response.data &&
+        typeof err.response.data === "object" &&
+        "error" in err.response.data &&
+        typeof err.response.data.error === "string"
+          ? err.response.data.error
+          : "Failed to delete";
       // Re-throw so the UI can show an error
-      throw new Error(err?.response?.data?.error ?? "Failed to delete");
+      throw new Error(message);
     }
   }, []);
 
@@ -111,36 +140,56 @@ export function useCenteringReports() {
 
 export function useCenteringReport(reportId: string | undefined) {
   const [report, setReport] = useState<CenteringReport | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!reportId) {
-      setLoading(false);
-      return;
-    }
+    if (!reportId) return;
+
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    api
-      .get<{ data: CenteringReport }>(`/centering/reports/${reportId}`)
-      .then((res) => {
-        if (!cancelled) setReport(res.data.data);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err?.response?.data?.error ?? "Failed to load report");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      api
+        .get<{ data: CenteringReport }>(`/centering/reports/${reportId}`)
+        .then((res) => {
+          if (!cancelled) setReport(res.data.data);
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            const message =
+              err &&
+              typeof err === "object" &&
+              "response" in err &&
+              err.response &&
+              typeof err.response === "object" &&
+              "data" in err.response &&
+              err.response.data &&
+              typeof err.response.data === "object" &&
+              "error" in err.response.data &&
+              typeof err.response.data.error === "string"
+                ? err.response.data.error
+                : "Failed to load report";
+            setError(message);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 0);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(t);
     };
   }, [reportId]);
 
-  return { report, loading, error };
+  return {
+    report: reportId ? report : null,
+    loading: reportId ? loading : false,
+    error: reportId ? error : null,
+  };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

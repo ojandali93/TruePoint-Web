@@ -25,6 +25,11 @@ const schema = z
       .regex(/^\+?[1-9]\d{7,14}$/, "Enter a valid phone number")
       .optional()
       .or(z.literal("")),
+    affiliate_code: z
+      .string()
+      .max(64, "Code is too long")
+      .optional()
+      .or(z.literal("")),
     password: z
       .string()
       .min(8, "At least 8 characters")
@@ -199,9 +204,17 @@ function RegisterForm() {
   const onSubmit = async (data: FormData) => {
     setServerError(null);
     try {
+      // Optional affiliate code — passed as user metadata so the
+      // handle_new_user DB trigger can write it onto the profile row at
+      // creation time. Only included when the user actually entered one.
+      const affiliationCode = data.affiliate_code?.trim();
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
+        ...(affiliationCode
+          ? { options: { data: { affiliation: affiliationCode } } }
+          : {}),
         // Note: emailRedirectTo is unused now since we manage verification
         // ourselves. Safe to keep or remove.
       });
@@ -494,6 +507,17 @@ function RegisterForm() {
             hint='Optional — used for grading update alerts'
             autoComplete='tel'
             {...register("phone")}
+          />
+
+          {/* Affiliate code */}
+          <Input
+            label='Affiliate code'
+            type='text'
+            placeholder='e.g. a vendor or creator code'
+            error={errors.affiliate_code?.message}
+            hint='Optional — enter a code if you signed up through a vendor or creator'
+            autoComplete='off'
+            {...register("affiliate_code")}
           />
 
           {/* Password */}

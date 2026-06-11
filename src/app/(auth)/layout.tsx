@@ -10,7 +10,19 @@ import { ROUTES } from "../../constants/routes";
 // on /verify-email and click the resend button. Without this exclusion,
 // the auth layout would bounce them to /dashboard, then the
 // EmailVerificationGate would bounce them back here — infinite loop.
-const AUTH_ROUTES_TO_KEEP = ["/verify-email", "/reset-password"];
+//
+// /onboarding belongs here too: a user who just signed up DOES have a
+// session, and onboarding is where they finish setting up their profile,
+// collection, and (for paid plans) billing — BEFORE the verification email
+// is sent at the end of the flow. Without this, signup creates the session,
+// register pushes to /onboarding, this layout sees the session and replaces
+// to /dashboard, and the EmailVerificationGate then sends them to
+// /verify-email — so the entire profile/onboarding flow gets skipped.
+const AUTH_ROUTES_TO_KEEP = [
+  ROUTES.ONBOARDING,
+  "/verify-email",
+  "/reset-password",
+];
 
 export default function AuthLayout({
   children,
