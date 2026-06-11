@@ -2277,6 +2277,46 @@ export default function AdminPage() {
             Variants ↗
           </button>
         </div>
+
+        {/* Management section */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginTop: 16,
+            paddingTop: 14,
+            paddingBottom: 4,
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              letterSpacing: "0.08em",
+            }}
+          >
+            MANAGEMENT
+          </span>
+          <button
+            onClick={() => router.push("/admin/affiliates")}
+            style={{
+              padding: "7px 14px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Manage Affiliates ↗
+          </button>
+        </div>
       </div>
       <div style={{ padding: "28px 40px", maxWidth: 1200, margin: "0 auto" }}>
         {activeTab === "users" && <UserAnalytics />}
