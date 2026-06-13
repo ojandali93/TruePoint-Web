@@ -77,6 +77,7 @@ function ClaimForm() {
   // let the user retry just the linking step (re-signup would fail).
   const [needsConsumeRetry, setNeedsConsumeRetry] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [agreed, setAgreed] = useState(false);
 
   const {
     register,
@@ -134,6 +135,10 @@ function ClaimForm() {
 
   const onSubmit = async (data: FormData) => {
     setServerError(null);
+    if (!agreed) {
+      setServerError("Please confirm you agree to the Affiliate Agreement.");
+      return;
+    }
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -301,6 +306,76 @@ function ClaimForm() {
         </div>
       </div>
 
+      {/* Key program terms */}
+      <div
+        style={{
+          background: "var(--surface-2, rgba(255,255,255,0.02))",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          padding: "14px 16px",
+          marginBottom: 18,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.1em",
+            color: "var(--text-dim)",
+            fontFamily: "DM Mono, monospace",
+            marginBottom: 10,
+          }}
+        >
+          KEY PROGRAM TERMS
+        </div>
+        <ul
+          style={{
+            margin: 0,
+            paddingLeft: 18,
+            display: "flex",
+            flexDirection: "column",
+            gap: 7,
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: "var(--text-secondary)",
+          }}
+        >
+          <li>
+            Earn <strong>5%</strong> on Collector and <strong>7%</strong> on Pro
+            from members who join with your code — on revenue actually
+            collected, net of fees.
+          </li>
+          <li>No commission on free accounts.</li>
+          <li>
+            Paid monthly via <strong>PayPal</strong> once your balance reaches{" "}
+            <strong>$75</strong> (held ~30 days to cover refunds).
+          </li>
+          <li>
+            You keep earning for as long as a referred member stays subscribed.
+          </li>
+          <li>
+            You get <strong>Pro free</strong> as a partner.
+          </li>
+          <li>
+            Payout setup (adding your PayPal) opens around{" "}
+            <strong>July 1, 2026</strong> in your affiliate dashboard.
+          </li>
+        </ul>
+        <a
+          href='/affiliate-terms'
+          target='_blank'
+          rel='noopener noreferrer'
+          style={{
+            display: "inline-block",
+            marginTop: 12,
+            fontSize: 13,
+            color: "var(--gold)",
+            fontWeight: 500,
+          }}
+        >
+          Read the full Affiliate Agreement →
+        </a>
+      </div>
+
       <h1
         style={{
           fontSize: 22,
@@ -394,11 +469,47 @@ function ClaimForm() {
             {...register("confirm_password")}
           />
 
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              cursor: "pointer",
+              marginTop: 4,
+            }}
+          >
+            <input
+              type='checkbox'
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              style={{ marginTop: 3, accentColor: "var(--gold)" }}
+            />
+            <span
+              style={{
+                fontSize: 13,
+                color: "var(--text-secondary)",
+                lineHeight: 1.5,
+              }}
+            >
+              I have read and agree to the{" "}
+              <a
+                href='/affiliate-terms'
+                target='_blank'
+                rel='noopener noreferrer'
+                style={{ color: "var(--gold)" }}
+              >
+                Affiliate &amp; Partner Program Agreement
+              </a>
+              .
+            </span>
+          </label>
+
           <Button
             type='submit'
             variant='primary'
             size='lg'
             loading={isSubmitting}
+            disabled={!agreed}
             fullWidth
             style={{ marginTop: 4 }}
           >
