@@ -1548,6 +1548,187 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section
+        id='affiliate'
+        style={{
+          position: "relative",
+          borderTop: "1px solid var(--border)",
+          padding: "120px 24px",
+          overflow: "hidden",
+        }}
+      >
+        {/* gold glow */}
+        <div
+          style={{
+            position: "absolute",
+            top: "-10%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 900,
+            height: 480,
+            background:
+              "radial-gradient(ellipse at center, rgba(201,168,76,0.10), transparent 70%)",
+            pointerEvents: "none",
+            filter: "blur(8px)",
+          }}
+        />
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          <div style={{ textAlign: "center", marginBottom: 56 }}>
+            <div
+              className='font-mono'
+              style={{
+                fontSize: 11,
+                color: "var(--gold)",
+                letterSpacing: "0.12em",
+                marginBottom: 18,
+              }}
+            >
+              AFFILIATE PROGRAM
+            </div>
+            <h2
+              className='font-display'
+              style={{
+                fontSize: "clamp(36px, 5vw, 64px)",
+                letterSpacing: "0.04em",
+                lineHeight: 1.02,
+              }}
+            >
+              GET PAID TO SHARE
+              <br />
+              <span className='gold-shimmer'>WHAT YOU ALREADY LOVE.</span>
+            </h2>
+            <p
+              style={{
+                fontSize: 16,
+                color: "var(--text-secondary)",
+                lineHeight: 1.8,
+                maxWidth: 600,
+                margin: "22px auto 0",
+              }}
+            >
+              You&apos;re already talking cards with your audience. Turn that
+              into recurring income — and get the full Pro toolkit free while
+              you do it. No fees to join, real payouts in dollars.
+            </p>
+          </div>
+
+          {/* Benefits */}
+          <div
+            className='landing-4col-grid'
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: 16,
+              marginBottom: 56,
+            }}
+          >
+            {[
+              {
+                k: "5% / 7%",
+                t: "Recurring commission",
+                d: "Earn 5% on Collector and 7% on Pro — every month a member you referred stays subscribed.",
+              },
+              {
+                k: "FREE",
+                t: "Pro, on us",
+                d: "Approved partners get a full Pro account at no cost — the exact tools you're recommending.",
+              },
+              {
+                k: "PayPal",
+                t: "Real payouts",
+                d: "Paid monthly via PayPal once your balance hits $75. No points, no store credit — actual money.",
+              },
+              {
+                k: "∞",
+                t: "Keep earning",
+                d: "Commission continues for as long as each member you bring in stays subscribed.",
+              },
+            ].map((b) => (
+              <div
+                key={b.t}
+                className='card-hover'
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  padding: "28px 24px",
+                  textAlign: "left",
+                }}
+              >
+                <div
+                  className='font-display'
+                  style={{
+                    fontSize: 30,
+                    color: "var(--gold)",
+                    letterSpacing: "0.02em",
+                    marginBottom: 14,
+                  }}
+                >
+                  {b.k}
+                </div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: "var(--text-primary)",
+                    marginBottom: 8,
+                  }}
+                >
+                  {b.t}
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--text-secondary)",
+                    lineHeight: 1.7,
+                  }}
+                >
+                  {b.d}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div style={{ textAlign: "center" }}>
+            <Link
+              href='/affiliates'
+              className='btn-primary'
+              style={{
+                padding: "18px 48px",
+                fontSize: 16,
+                display: "inline-block",
+              }}
+            >
+              Become an Affiliate
+            </Link>
+            <div
+              style={{
+                marginTop: 18,
+                fontSize: 13,
+                color: "var(--text-dim)",
+              }}
+            >
+              Free to join · Takes 2 minutes ·{" "}
+              <Link
+                href='/affiliate-terms'
+                target='_blank'
+                style={{ color: "var(--gold)" }}
+              >
+                See the full terms →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Collection Types ─────────────────────────────────────── */}
       <section
         id='collection'
@@ -2100,6 +2281,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* ── Affiliate program ────────────────────────────────────── */}
 
       {/* ── Roadmap ──────────────────────────────────────────────── */}
       <section
