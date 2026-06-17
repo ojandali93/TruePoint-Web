@@ -652,6 +652,9 @@ function PlatformUsers() {
   const [newPlan, setNewPlan] = useState<"collector" | "pro">("collector");
   const [planNote, setPlanNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [resend, setResend] = useState<
+    Record<string, "sending" | "sent" | "verified" | "error">
+  >({});
 
   const load = useCallback(async (q = "") => {
     setLoading(true);
@@ -691,6 +694,21 @@ function PlatformUsers() {
       load(search);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const resendVerification = async (id: string) => {
+    setResend((s) => ({ ...s, [id]: "sending" }));
+    try {
+      const r = await api.post<{
+        data: { sent: boolean; alreadyVerified: boolean };
+      }>(`/admin/users/${id}/resend-verification`);
+      setResend((s) => ({
+        ...s,
+        [id]: r.data.data.alreadyVerified ? "verified" : "sent",
+      }));
+    } catch {
+      setResend((s) => ({ ...s, [id]: "error" }));
     }
   };
 
@@ -752,7 +770,7 @@ function PlatformUsers() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr 100px 110px 130px",
+            gridTemplateColumns: "1fr 1fr 100px 110px 130px 150px",
             padding: "9px 16px",
             background: "var(--surface-2)",
             borderBottom: "1px solid var(--border)",
@@ -767,6 +785,7 @@ function PlatformUsers() {
           <span>PLAN</span>
           <span>JOINED</span>
           <span></span>
+          <span>VERIFY</span>
         </div>
         {loading ? (
           <Loader />
@@ -786,7 +805,7 @@ function PlatformUsers() {
                 key={u.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr 100px 110px 130px",
+                  gridTemplateColumns: "1fr 1fr 100px 110px 130px 150px",
                   padding: "10px 16px",
                   borderBottom: "1px solid var(--border)",
                   alignItems: "center",
@@ -835,6 +854,38 @@ function PlatformUsers() {
                   }}
                 >
                   Override Plan
+                </button>
+                <button
+                  onClick={() => resendVerification(u.id)}
+                  disabled={resend[u.id] === "sending"}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
+                    background: "transparent",
+                    color:
+                      resend[u.id] === "sent"
+                        ? "#10B981"
+                        : resend[u.id] === "verified"
+                          ? "var(--text-dim)"
+                          : resend[u.id] === "error"
+                            ? "#EF4444"
+                            : "var(--text-secondary)",
+                    fontSize: 11,
+                    cursor: resend[u.id] === "sending" ? "default" : "pointer",
+                    fontFamily: "inherit",
+                    opacity: resend[u.id] === "sending" ? 0.6 : 1,
+                  }}
+                >
+                  {resend[u.id] === "sending"
+                    ? "Sending…"
+                    : resend[u.id] === "sent"
+                      ? "Sent ✓"
+                      : resend[u.id] === "verified"
+                        ? "Verified"
+                        : resend[u.id] === "error"
+                          ? "Failed — retry"
+                          : "Resend Email"}
                 </button>
               </div>
             );
