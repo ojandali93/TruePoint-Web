@@ -80,6 +80,8 @@ interface UserRow {
   username?: string;
   full_name?: string;
   created_at: string;
+  email_verified?: boolean;
+  last_login_at?: string | null;
   subscription?: { plan: string; status: string }[];
 }
 
@@ -770,7 +772,8 @@ function PlatformUsers() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr 100px 110px 130px 150px",
+            gridTemplateColumns:
+              "1.4fr 1.4fr 80px 100px 110px 120px 110px 110px",
             padding: "9px 16px",
             background: "var(--surface-2)",
             borderBottom: "1px solid var(--border)",
@@ -784,6 +787,8 @@ function PlatformUsers() {
           <span>ID</span>
           <span>PLAN</span>
           <span>JOINED</span>
+          <span>EMAIL</span>
+          <span>LAST LOGIN</span>
           <span></span>
           <span>VERIFY</span>
         </div>
@@ -800,12 +805,17 @@ function PlatformUsers() {
                 : sub?.plan === "collector"
                   ? "#3B82F6"
                   : "#6B7280";
+            const verified = u.email_verified === true;
+            const lastLogin = u.last_login_at
+              ? new Date(u.last_login_at).toLocaleDateString()
+              : null;
             return (
               <div
                 key={u.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr 100px 110px 130px 150px",
+                  gridTemplateColumns:
+                    "1.4fr 1.4fr 80px 100px 110px 120px 110px 110px",
                   padding: "10px 16px",
                   borderBottom: "1px solid var(--border)",
                   alignItems: "center",
@@ -837,6 +847,29 @@ function PlatformUsers() {
                 <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
                   {new Date(u.created_at).toLocaleDateString()}
                 </span>
+
+                {/* EMAIL confirmed */}
+                <span
+                  style={{
+                    color: verified ? "#10B981" : "#F59E0B",
+                    fontSize: 11,
+                    fontWeight: 600,
+                  }}
+                >
+                  {verified ? "✓ Verified" : "Unverified"}
+                </span>
+
+                {/* LAST LOGIN */}
+                <span
+                  style={{
+                    color: lastLogin ? "var(--text-secondary)" : "#6B7280",
+                    fontSize: 11,
+                  }}
+                >
+                  {lastLogin ?? "Never"}
+                </span>
+
+                {/* Override plan */}
                 <button
                   onClick={() => {
                     setPlanModal(u);
@@ -853,40 +886,51 @@ function PlatformUsers() {
                     fontFamily: "inherit",
                   }}
                 >
-                  Override Plan
+                  Plan
                 </button>
-                <button
-                  onClick={() => resendVerification(u.id)}
-                  disabled={resend[u.id] === "sending"}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 6,
-                    border: "1px solid var(--border)",
-                    background: "transparent",
-                    color:
-                      resend[u.id] === "sent"
-                        ? "#10B981"
-                        : resend[u.id] === "verified"
-                          ? "var(--text-dim)"
+
+                {/* Resend verification — only for unverified users */}
+                {verified ? (
+                  <span
+                    style={{
+                      color: "#6B7280",
+                      fontSize: 11,
+                      textAlign: "center",
+                    }}
+                  >
+                    —
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => resendVerification(u.id)}
+                    disabled={resend[u.id] === "sending"}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color:
+                        resend[u.id] === "sent"
+                          ? "#10B981"
                           : resend[u.id] === "error"
                             ? "#EF4444"
                             : "var(--text-secondary)",
-                    fontSize: 11,
-                    cursor: resend[u.id] === "sending" ? "default" : "pointer",
-                    fontFamily: "inherit",
-                    opacity: resend[u.id] === "sending" ? 0.6 : 1,
-                  }}
-                >
-                  {resend[u.id] === "sending"
-                    ? "Sending…"
-                    : resend[u.id] === "sent"
-                      ? "Sent ✓"
-                      : resend[u.id] === "verified"
-                        ? "Verified"
+                      fontSize: 11,
+                      cursor:
+                        resend[u.id] === "sending" ? "default" : "pointer",
+                      fontFamily: "inherit",
+                      opacity: resend[u.id] === "sending" ? 0.6 : 1,
+                    }}
+                  >
+                    {resend[u.id] === "sending"
+                      ? "Sending…"
+                      : resend[u.id] === "sent"
+                        ? "Sent ✓"
                         : resend[u.id] === "error"
-                          ? "Failed — retry"
-                          : "Resend Email"}
-                </button>
+                          ? "Retry"
+                          : "Resend"}
+                  </button>
+                )}
               </div>
             );
           })
