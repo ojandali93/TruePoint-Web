@@ -19,6 +19,7 @@ import {
   classifySeries,
   getSetLanguage,
   groupSetsBySeries,
+  isMajorSet,
 } from "../../../lib/setSeries";
 import { SetLogoPlaceholder } from "@/components/SetLogoPlaceholder.web";
 
@@ -223,6 +224,14 @@ function SeriesSection({
   sets: PokemonSet[];
   onSetTap: (set: PokemonSet) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const major = useMemo(() => sets.filter(isMajorSet), [sets]);
+  const minorCount = sets.length - major.length;
+  // Only collapse when there's a real split (some major AND some minor).
+  const canCollapse = major.length > 0 && minorCount > 0;
+  const visible = !canCollapse || expanded ? sets : major;
+
   return (
     <div style={{ marginBottom: 48 }}>
       <div
@@ -243,6 +252,26 @@ function SeriesSection({
         >
           {seriesName.toUpperCase()}
         </span>
+
+        {canCollapse && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            style={{
+              padding: "3px 9px",
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--gold)",
+              fontSize: 11,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {expanded ? "Show less" : `+${minorCount} more`}
+          </button>
+        )}
+
         <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
         <span
           style={{
@@ -251,7 +280,7 @@ function SeriesSection({
             fontFamily: "DM Mono, monospace",
           }}
         >
-          {sets.length}
+          {canCollapse ? `${visible.length}/${sets.length}` : sets.length}
         </span>
       </div>
 
@@ -262,7 +291,7 @@ function SeriesSection({
           gap: 12,
         }}
       >
-        {sets.map((set) => (
+        {visible.map((set) => (
           <SetTile key={set.id} set={set} onClick={() => onSetTap(set)} />
         ))}
       </div>

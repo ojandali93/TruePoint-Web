@@ -46,6 +46,13 @@ export const SERIES_ORDER: SeriesName[] = [
 
 export type SetLanguage = "English" | "Japanese";
 
+const MINOR_SET_PATTERN =
+  /\b(promo|promos|energies|deck|decks|box|boxes|collection|tin|gift|blister|premium|elite\s*trainer|build\s*&?\s*battle|starter|bundle|jumbo|sample|demo|prerelease|staff|sleeve|pin)\b/i;
+
+export function isMajorSet(set: Pick<PokemonSet, "name">): boolean {
+  return !MINOR_SET_PATTERN.test(set.name);
+}
+
 /** API may include language; otherwise infer from name (JP script → Japanese). */
 export function getSetLanguage(
   set: Pick<PokemonSet, "name" | "language">,
