@@ -325,34 +325,32 @@ function SetTile({ set, onClick }: { set: PokemonSet; onClick: () => void }) {
         e.currentTarget.style.transform = "translateY(0)";
       }}
     >
-      {set.images?.logo && (
-        <div
-          style={{
-            height: 48,
-            display: "flex",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          {set.images?.logo ? (
-            <Image
-              src={set.images.logo}
-              alt={set.name}
-              width={120}
-              height={48}
-              style={{
-                objectFit: "contain",
-                maxWidth: "100%",
-                maxHeight: 48,
-                width: "auto",
-                height: "auto",
-              }}
-            />
-          ) : (
-            <SetLogoPlaceholder width={58} height={48} />
-          )}
-        </div>
-      )}
+      <div
+        style={{
+          height: 48,
+          display: "flex",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        {set.images?.logo ? (
+          <Image
+            src={set.images.logo}
+            alt={set.name}
+            width={120}
+            height={48}
+            style={{
+              objectFit: "contain",
+              maxWidth: "100%",
+              maxHeight: 48,
+              width: "auto",
+              height: "auto",
+            }}
+          />
+        ) : (
+          <SetLogoPlaceholder width={58} height={48} />
+        )}
+      </div>
       <div
         style={{
           fontSize: 13,
