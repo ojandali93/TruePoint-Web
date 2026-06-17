@@ -22,6 +22,7 @@ export interface PokemonSet {
   printedTotal: number;
   total: number;
   releaseDate: string;
+  language?: string | null;
   images: { symbol: string; logo: string };
 }
 

@@ -15,7 +15,11 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 import { useSets, type PokemonSet } from "../../../hooks/useBrowse";
-import { classifySeries, groupSetsBySeries } from "../../../lib/setSeries";
+import {
+  classifySeries,
+  getSetLanguage,
+  groupSetsBySeries,
+} from "../../../lib/setSeries";
 import { SetLogoPlaceholder } from "@/components/SetLogoPlaceholder.web";
 
 export default function SetsPage() {
@@ -23,14 +27,20 @@ export default function SetsPage() {
   const { sets, loading, error } = useSets();
   const [search, setSearch] = useState("");
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
+  const [language, setLanguage] = useState<"all" | "English" | "Japanese">(
+    "all",
+  );
 
   // Search-filter first
+  // Language filter first, then search
   const searched = useMemo(
     () =>
-      sets.filter((s) =>
-        !search ? true : s.name.toLowerCase().includes(search.toLowerCase()),
-      ),
-    [sets, search],
+      sets
+        .filter((s) => language === "all" || getSetLanguage(s) === language)
+        .filter((s) =>
+          !search ? true : s.name.toLowerCase().includes(search.toLowerCase()),
+        ),
+    [sets, search, language],
   );
 
   // Group into series buckets (derived from name)
@@ -108,6 +118,24 @@ export default function SetsPage() {
           >
             ⌕
           </span>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <SeriesChip
+            label='All languages'
+            active={language === "all"}
+            onClick={() => setLanguage("all")}
+          />
+          <SeriesChip
+            label='English'
+            active={language === "English"}
+            onClick={() => setLanguage("English")}
+          />
+          <SeriesChip
+            label='Japanese'
+            active={language === "Japanese"}
+            onClick={() => setLanguage("Japanese")}
+          />
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

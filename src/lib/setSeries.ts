@@ -44,6 +44,20 @@ export const SERIES_ORDER: SeriesName[] = [
   SERIES.OTHER,
 ];
 
+export type SetLanguage = "English" | "Japanese";
+
+/** API may include language; otherwise infer from name (JP script → Japanese). */
+export function getSetLanguage(
+  set: Pick<PokemonSet, "name" | "language">,
+): SetLanguage {
+  if (set.language === "English" || set.language === "Japanese") {
+    return set.language;
+  }
+  return /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(set.name)
+    ? "Japanese"
+    : "English";
+}
+
 /** Classify a set into a series by its name. */
 export function classifySeries(name: string): SeriesName {
   const n = name ?? "";

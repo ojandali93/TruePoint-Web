@@ -265,6 +265,10 @@ export default function MasterSetsPage() {
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
   const [upgradeMsg, setUpgradeMsg] = useState("");
+  const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
+  const [language, setLanguage] = useState<"all" | "English" | "Japanese">(
+    "all",
+  );
 
   const load = useCallback(async () => {
     try {
