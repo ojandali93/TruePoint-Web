@@ -318,8 +318,9 @@ export default function MasterSetsPage() {
         s.series?.toLowerCase().includes(search.toLowerCase())),
   );
 
-  const isPaid = limit?.plan !== "free";
-  const atLimit = limit && !limit.allowed;
+  const unlimited = limit ? limit.limit === null : false;
+  const isPaid = unlimited;
+  const atLimit = !!limit && limit.allowed === false;
 
   return (
     <div style={{ padding: "32px 40px", maxWidth: 900, margin: "0 auto" }}>
@@ -378,7 +379,7 @@ export default function MasterSetsPage() {
       </div>
 
       {/* Plan limit bar */}
-      {limit?.plan === "free" && (
+      {limit && limit.limit !== null && (
         <div
           style={{
             background: "rgba(201,168,76,0.06)",
@@ -583,7 +584,7 @@ export default function MasterSetsPage() {
                   }}
                 >
                   {atLimit
-                    ? `Limit reached (${limit?.limit} sets on free plan)`
+                    ? `Limit reached (${limit?.current}/${limit?.limit} on the ${limit?.plan} plan)`
                     : "Choose a set to track"}
                 </div>
               </div>
@@ -621,8 +622,8 @@ export default function MasterSetsPage() {
                     marginBottom: 20,
                   }}
                 >
-                  Free plan allows {limit?.limit} tracked sets. Upgrade to
-                  Collector or Pro for unlimited.
+                  Your {limit?.plan} plan allows {limit?.limit} tracked sets.
+                  Upgrade to Collector or Pro for unlimited.
                 </div>
                 <a
                   href='/settings/billing'
