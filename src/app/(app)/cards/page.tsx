@@ -16,6 +16,7 @@ import Image from "next/image";
 
 import { useSets, type PokemonSet } from "../../../hooks/useBrowse";
 import { classifySeries, groupSetsBySeries } from "../../../lib/setSeries";
+import { SetLogoPlaceholder } from "@/components/SetLogoPlaceholder.web";
 
 export default function SetsPage() {
   const router = useRouter();
@@ -276,19 +277,23 @@ function SetTile({ set, onClick }: { set: PokemonSet; onClick: () => void }) {
             marginBottom: 12,
           }}
         >
-          <Image
-            src={set.images.logo}
-            alt={set.name}
-            width={120}
-            height={48}
-            style={{
-              objectFit: "contain",
-              maxWidth: "100%",
-              maxHeight: 48,
-              width: "auto",
-              height: "auto",
-            }}
-          />
+          {set.images?.logo ? (
+            <Image
+              src={set.images.logo}
+              alt={set.name}
+              width={120}
+              height={48}
+              style={{
+                objectFit: "contain",
+                maxWidth: "100%",
+                maxHeight: 48,
+                width: "auto",
+                height: "auto",
+              }}
+            />
+          ) : (
+            <SetLogoPlaceholder width={58} height={48} />
+          )}
         </div>
       )}
       <div
