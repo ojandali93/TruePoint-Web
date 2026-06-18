@@ -28,16 +28,14 @@ export default function SetsPage() {
   const { sets, loading, error } = useSets();
   const [search, setSearch] = useState("");
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
-  const [language, setLanguage] = useState<"all" | "English" | "Japanese">(
-    "all",
-  );
+  const [language, setLanguage] = useState<"English" | "Japanese">("English");
 
   // Search-filter first
   // Language filter first, then search
   const searched = useMemo(
     () =>
       sets
-        .filter((s) => language === "all" || getSetLanguage(s) === language)
+        .filter((s) => getSetLanguage(s) === language)
         .filter((s) =>
           !search ? true : s.name.toLowerCase().includes(search.toLowerCase()),
         ),
@@ -122,11 +120,6 @@ export default function SetsPage() {
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
-          <SeriesChip
-            label='All languages'
-            active={language === "all"}
-            onClick={() => setLanguage("all")}
-          />
           <SeriesChip
             label='English'
             active={language === "English"}
