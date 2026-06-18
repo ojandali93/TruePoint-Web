@@ -978,30 +978,38 @@ export default function LandingPage() {
                   </svg>
                 </a>
 
-                {/* Google Play — coming soon (Android in review; non-clickable). */}
-                <div
-                  aria-label='TruePoint TCG — coming soon on Google Play'
-                  title='Coming soon to Google Play'
+                {/* Official "Get it on Google Play" badge — live on Android. */}
+                <a
+                  href='https://play.google.com/store/apps/details?id=app.truepointinc.truepointtcg'
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  aria-label='Download TruePoint TCG on Google Play'
                   style={{
-                    position: "relative",
                     display: "inline-block",
                     lineHeight: 0,
-                    cursor: "default",
+                    transition: "transform 0.15s ease, opacity 0.15s ease",
+                  }}
+                  onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.opacity = "0.92";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.opacity = "1";
                   }}
                 >
                   <svg
                     xmlns='http://www.w3.org/2000/svg'
                     viewBox='0 0 135 40'
-                    aria-hidden='true'
+                    aria-label='Get it on Google Play'
                     role='img'
                     style={{
                       height: 40,
                       width: "auto",
                       userSelect: "none",
-                      opacity: 0.4,
                     }}
                   >
-                    <title>Get it on Google Play (coming soon)</title>
+                    <title>Get it on Google Play</title>
                     <rect
                       x='0.5'
                       y='0.5'
@@ -1038,36 +1046,7 @@ export default function LandingPage() {
                       Google Play
                     </text>
                   </svg>
-
-                  {/* Coming soon overlay */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    <span
-                      className='font-mono'
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: "0.1em",
-                        color: "#0D0E11",
-                        background: "var(--gold)",
-                        padding: "4px 10px",
-                        borderRadius: 6,
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      Coming soon
-                    </span>
-                  </div>
-                </div>
+                </a>
               </div>
             </div>
           </div>
