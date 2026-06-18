@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import api from "../../lib/api";
@@ -48,14 +48,35 @@ const PRODUCT_TYPE_LABELS: Record<string, string> = {
   collection: "Collection",
 };
 
-export default function GlobalSearch() {
+type Variant = "sidebar" | "bar";
+
+export default function GlobalSearch({
+  variant = "sidebar",
+}: {
+  variant?: Variant;
+}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // Bar variant: where to anchor the full-content results panel.
+  const [panelRect, setPanelRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+  } | null>(null);
+
+  const updateRect = useCallback(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setPanelRect({ left: r.left, top: r.bottom, width: r.width });
+  }, []);
 
   const handleQueryChange = (value: string) => {
     setQuery(value);
@@ -69,7 +90,6 @@ export default function GlobalSearch() {
   // Debounced search
   useEffect(() => {
     if (query.length < 2) return;
-
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
@@ -84,9 +104,20 @@ export default function GlobalSearch() {
         setLoading(false);
       }
     }, 300);
-
     return () => clearTimeout(timer);
   }, [query]);
+
+  // Keep the bar panel sized to the content area
+  useEffect(() => {
+    if (variant !== "bar" || !open) return;
+    updateRect();
+    window.addEventListener("resize", updateRect);
+    window.addEventListener("scroll", updateRect, true);
+    return () => {
+      window.removeEventListener("resize", updateRect);
+      window.removeEventListener("scroll", updateRect, true);
+    };
+  }, [variant, open, updateRect]);
 
   // Close on outside click
   useEffect(() => {
@@ -122,8 +153,8 @@ export default function GlobalSearch() {
 
   const hasResults =
     results &&
-    (results.sets.length > 0 ||
-      results.cards.length > 0 ||
+    (results.cards.length > 0 ||
+      results.sets.length > 0 ||
       results.products.length > 0);
 
   const handleSelect = (href: string) => {
@@ -132,9 +163,297 @@ export default function GlobalSearch() {
     router.push(href);
   };
 
+  // ─── Result rows (shared by both variants; cards first) ────────────────────
+  const sectionLabel = (text: string) => (
+    <div
+      style={{
+        padding: "8px 14px 4px",
+        fontSize: 10,
+        color: "var(--text-dim)",
+        letterSpacing: "0.08em",
+        fontFamily: "DM Mono, monospace",
+        borderBottom: "1px solid var(--border)",
+        background: "var(--surface-2)",
+      }}
+    >
+      {text}
+    </div>
+  );
+
+  const rowBase: React.CSSProperties = {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 14px",
+    border: "none",
+    borderBottom: "1px solid var(--border)",
+    background: "transparent",
+    cursor: "pointer",
+    textAlign: "left",
+    fontFamily: "inherit",
+    transition: "background 0.1s ease",
+  };
+  const hoverIn = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.background = "var(--surface-2)";
+  };
+  const hoverOut = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.background = "transparent";
+  };
+
+  const renderSections = () => (
+    <>
+      {!hasResults && !loading && (
+        <div
+          style={{
+            padding: "28px 16px",
+            textAlign: "center",
+            fontSize: 13,
+            color: "var(--text-dim)",
+          }}
+        >
+          No results for &ldquo;{query}&rdquo;
+        </div>
+      )}
+
+      {/* Cards first */}
+      {results && results.cards.length > 0 && (
+        <div>
+          {sectionLabel("CARDS")}
+          {results.cards.map((card) => (
+            <button
+              key={card.id}
+              onClick={() => handleSelect(ROUTES.CARD(card.set_id, card.id))}
+              style={rowBase}
+              onMouseEnter={hoverIn}
+              onMouseLeave={hoverOut}
+            >
+              {card.image_small ? (
+                <Image
+                  src={card.image_small}
+                  alt={card.name}
+                  width={28}
+                  height={40}
+                  style={{ objectFit: "contain", borderRadius: 3 }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 28,
+                    height: 40,
+                    background: "var(--surface-3)",
+                    borderRadius: 3,
+                  }}
+                />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: "var(--text-primary)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {card.name}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  #{card.number}
+                  {card.rarity && ` · ${card.rarity}`}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Sets */}
+      {results && results.sets.length > 0 && (
+        <div>
+          {sectionLabel("SETS")}
+          {results.sets.map((set) => (
+            <button
+              key={set.id}
+              onClick={() => handleSelect(ROUTES.SET(set.id))}
+              style={rowBase}
+              onMouseEnter={hoverIn}
+              onMouseLeave={hoverOut}
+            >
+              {set.symbol_url ? (
+                <Image
+                  src={set.symbol_url}
+                  alt=''
+                  width={18}
+                  height={18}
+                  style={{ objectFit: "contain" }}
+                />
+              ) : (
+                <span style={{ fontSize: 14, color: "var(--text-dim)" }}>
+                  ◈
+                </span>
+              )}
+              <div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  {set.name}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  {set.series}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Products */}
+      {results && results.products.length > 0 && (
+        <div>
+          {sectionLabel("SEALED PRODUCTS")}
+          {results.products.map((product) => (
+            <button
+              key={product.id}
+              onClick={() =>
+                handleSelect(`${ROUTES.SET(product.set_id)}?tab=products`)
+              }
+              style={rowBase}
+              onMouseEnter={hoverIn}
+              onMouseLeave={hoverOut}
+            >
+              <span style={{ fontSize: 16, color: "var(--text-dim)" }}>□</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: "var(--text-primary)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {product.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--gold)",
+                    fontFamily: "DM Mono, monospace",
+                  }}
+                >
+                  {PRODUCT_TYPE_LABELS[product.product_type] ??
+                    product.product_type}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  // ─── Bar variant: permanent full-width row + content-filling results ───────
+  if (variant === "bar") {
+    return (
+      <div
+        ref={barRef}
+        className='content-search-bar'
+        style={{
+          position: "relative",
+          padding: "12px 24px",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface)",
+        }}
+      >
+        <div style={{ position: "relative", maxWidth: 720 }}>
+          <span
+            style={{
+              position: "absolute",
+              left: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              fontSize: 15,
+              color: "var(--text-dim)",
+              pointerEvents: "none",
+            }}
+          >
+            ⌕
+          </span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            placeholder='Search cards, sets, products...'
+            style={{
+              width: "100%",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              padding: "11px 40px 11px 36px",
+              fontSize: 14,
+              color: "var(--text-primary)",
+              fontFamily: "inherit",
+              outline: "none",
+              transition: "border-color 0.15s ease",
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = "var(--gold-dim)";
+              if (query.length >= 2) setOpen(true);
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = "var(--border)";
+            }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              right: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              fontSize: 11,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+            }}
+          >
+            {loading ? "..." : query.length === 0 ? "⌘K" : ""}
+          </span>
+        </div>
+
+        {/* Full-content results panel */}
+        {open && panelRect && (
+          <div
+            ref={dropdownRef}
+            style={{
+              position: "fixed",
+              left: panelRect.left,
+              top: panelRect.top,
+              width: panelRect.width,
+              bottom: 0,
+              background: "var(--charcoal)",
+              borderTop: "1px solid var(--border)",
+              zIndex: 90,
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ maxWidth: 720, margin: "0 auto", padding: "8px 0" }}>
+              {renderSections()}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── Sidebar variant (default — used inside the mobile drawer) ─────────────
   return (
     <div style={{ position: "relative", padding: "0 10px", marginBottom: 8 }}>
-      {/* Search input */}
       <div style={{ position: "relative" }}>
         <span
           style={{
@@ -174,7 +493,6 @@ export default function GlobalSearch() {
             e.target.style.borderColor = "var(--border)";
           }}
         />
-        {/* Kbd hint or loading */}
         <span
           style={{
             position: "absolute",
@@ -190,7 +508,6 @@ export default function GlobalSearch() {
         </span>
       </div>
 
-      {/* Dropdown */}
       {open && (
         <div
           ref={dropdownRef}
@@ -210,250 +527,7 @@ export default function GlobalSearch() {
             overflowY: "auto",
           }}
         >
-          {!hasResults && !loading && (
-            <div
-              style={{
-                padding: "20px 16px",
-                textAlign: "center",
-                fontSize: 12,
-                color: "var(--text-dim)",
-              }}
-            >
-              No results for &ldquo;{query}&rdquo;
-            </div>
-          )}
-
-          {/* Sets */}
-          {results && results.sets.length > 0 && (
-            <div>
-              <div
-                style={{
-                  padding: "8px 14px 4px",
-                  fontSize: 10,
-                  color: "var(--text-dim)",
-                  letterSpacing: "0.08em",
-                  fontFamily: "DM Mono, monospace",
-                  borderBottom: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                }}
-              >
-                SETS
-              </div>
-              {results.sets.map((set) => (
-                <button
-                  key={set.id}
-                  onClick={() => handleSelect(ROUTES.SET(set.id))}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 14px",
-                    border: "none",
-                    borderBottom: "1px solid var(--border)",
-                    background: "transparent",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: "inherit",
-                    transition: "background 0.1s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--surface-2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  {set.symbol_url ? (
-                    <Image
-                      src={set.symbol_url}
-                      alt=''
-                      width={18}
-                      height={18}
-                      style={{ objectFit: "contain" }}
-                    />
-                  ) : (
-                    <span style={{ fontSize: 14, color: "var(--text-dim)" }}>
-                      ◈
-                    </span>
-                  )}
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      {set.name}
-                    </div>
-                    <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
-                      {set.series}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Cards */}
-          {results && results.cards.length > 0 && (
-            <div>
-              <div
-                style={{
-                  padding: "8px 14px 4px",
-                  fontSize: 10,
-                  color: "var(--text-dim)",
-                  letterSpacing: "0.08em",
-                  fontFamily: "DM Mono, monospace",
-                  borderBottom: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                }}
-              >
-                CARDS
-              </div>
-              {results.cards.map((card) => (
-                <button
-                  key={card.id}
-                  onClick={() =>
-                    handleSelect(ROUTES.CARD(card.set_id, card.id))
-                  }
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 14px",
-                    border: "none",
-                    borderBottom: "1px solid var(--border)",
-                    background: "transparent",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: "inherit",
-                    transition: "background 0.1s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--surface-2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  {card.image_small ? (
-                    <Image
-                      src={card.image_small}
-                      alt={card.name}
-                      width={28}
-                      height={40}
-                      style={{ objectFit: "contain", borderRadius: 3 }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: 28,
-                        height: 40,
-                        background: "var(--surface-3)",
-                        borderRadius: 3,
-                      }}
-                    />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: "var(--text-primary)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {card.name}
-                    </div>
-                    <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
-                      #{card.number}
-                      {card.rarity && ` · ${card.rarity}`}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Products */}
-          {results && results.products.length > 0 && (
-            <div>
-              <div
-                style={{
-                  padding: "8px 14px 4px",
-                  fontSize: 10,
-                  color: "var(--text-dim)",
-                  letterSpacing: "0.08em",
-                  fontFamily: "DM Mono, monospace",
-                  borderBottom: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                }}
-              >
-                SEALED PRODUCTS
-              </div>
-              {results.products.map((product) => (
-                <button
-                  key={product.id}
-                  onClick={() =>
-                    handleSelect(`${ROUTES.SET(product.set_id)}?tab=products`)
-                  }
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 14px",
-                    border: "none",
-                    borderBottom: "1px solid var(--border)",
-                    background: "transparent",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: "inherit",
-                    transition: "background 0.1s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--surface-2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <span style={{ fontSize: 16, color: "var(--text-dim)" }}>
-                    □
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: "var(--text-primary)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {product.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: "var(--gold)",
-                        fontFamily: "DM Mono, monospace",
-                      }}
-                    >
-                      {PRODUCT_TYPE_LABELS[product.product_type] ??
-                        product.product_type}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          {renderSections()}
         </div>
       )}
     </div>

@@ -15,7 +15,6 @@ import {
 import { PendingActionProvider } from "../../context/PendingActionContext";
 import { PlanProvider } from "../../context/PlanContext";
 import EmailVerificationGate from "../../components/EmailVerificationGate";
-import SupportFeedbackWidget from "@/components/SupportFeedbackWidget";
 
 // ─── Desktop sidebar nav — ordered to match mobile tab order ──────────────────
 const NAV_ITEMS = [
@@ -759,16 +758,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   />
                 </div>
 
-                {/* Search */}
-                <div
-                  style={{
-                    padding: "12px 0 4px",
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                >
-                  <GlobalSearch />
-                </div>
-
                 {/* Primary nav */}
                 <nav
                   style={{ padding: "12px 10px", flex: 1, overflow: "auto" }}
@@ -965,11 +954,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   <div style={{ width: 22 }} />
                 </header>
 
+                {/* Global search — permanent full-width row at the top of the
+                    content area (desktop). Expands to fill the content on type. */}
+                <GlobalSearch variant='bar' />
+
                 {/* Page content */}
                 <div className='app-content'>{children}</div>
               </main>
-
-              <SupportFeedbackWidget />
 
               {/* Mobile slide-out drawer — replaces the bottom tab bar */}
               <MobileDrawer

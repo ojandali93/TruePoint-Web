@@ -31,6 +31,15 @@
   padding: 0;
 }
 
+/* Add to globals.css — hide the content search bar on mobile (the mobile
+   drawer already has its own search). Match the breakpoint you use for
+   .desktop-sidebar / .mobile-header (commonly 768px or 1024px). */
+@media (max-width: 768px) {
+  .content-search-bar {
+    display: none;
+  }
+}
+
 html {
   scroll-behavior: smooth;
 }
