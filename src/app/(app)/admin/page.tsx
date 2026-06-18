@@ -116,7 +116,8 @@ type Tab =
   | "activity"
   | "flags"
   | "costs"
-  | "settings";
+  | "settings"
+  | "feedback";
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
@@ -213,6 +214,18 @@ function EmptyState({ msg }: { msg: string }) {
 
 const sevColor = (s: string) =>
   s === "critical" ? "#EF4444" : s === "error" ? "#F59E0B" : "#6B7280";
+
+const catColor = (c: string) =>
+  c === "support"
+    ? "var(--gold)"
+    : c === "bug"
+      ? "#EF4444"
+      : c === "feature"
+        ? "#3B82F6"
+        : c === "general"
+          ? "#8B5CF6"
+          : "#6B7280";
+
 const fmtDate = (d: string) =>
   new Date(d).toLocaleString("en-US", {
     month: "short",
@@ -2285,6 +2298,272 @@ function PlatformSettings() {
   );
 }
 
+// ─── Feedback & Support ───────────────────────────────────────────────────────
+
+interface FeedbackRow {
+  id: string;
+  created_at: string;
+  category: string;
+  message: string;
+  app_version: string | null;
+  platform: string | null;
+  contact_email: string | null;
+  status: string;
+  admin_notes: string | null;
+  user_id: string | null;
+  user?: {
+    id: string;
+    username: string | null;
+    full_name: string | null;
+  } | null;
+}
+
+function Feedback() {
+  const [rows, setRows] = useState<FeedbackRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [status, setStatus] = useState("open");
+  const [category, setCategory] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (status) p.set("status", status);
+      if (category) p.set("category", category);
+      const r = await api.get<{
+        data: { feedback: FeedbackRow[]; total: number };
+      }>(`/admin/feedback?${p.toString()}`);
+      setRows(r.data.data.feedback);
+      setTotal(r.data.data.total);
+    } finally {
+      setLoading(false);
+    }
+  }, [status, category]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  const setRowStatus = async (id: string, next: string) => {
+    setWorking(id);
+    try {
+      await api.patch(`/admin/feedback/${id}`, { status: next });
+      load();
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  return (
+    <div>
+      {/* Filters — category chips + status select, matching Error Logs */}
+      <div
+        style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}
+      >
+        {(["", "support", "bug", "feature", "general", "other"] as const).map(
+          (c) => {
+            const active = category === c;
+            const col = c ? catColor(c) : "var(--gold)";
+            return (
+              <button
+                key={c || "all"}
+                onClick={() => setCategory(c)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  border: `1px solid ${active ? col : "var(--border)"}`,
+                  background: active ? `${col}22` : "transparent",
+                  color: active ? col : "var(--text-dim)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  textTransform: "capitalize",
+                }}
+              >
+                {c || "All"}
+              </button>
+            );
+          },
+        )}
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          style={{
+            marginLeft: "auto",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "6px 12px",
+            fontSize: 12,
+            color: "var(--text-primary)",
+            fontFamily: "inherit",
+            outline: "none",
+          }}
+        >
+          <option value='open'>Open</option>
+          <option value='resolved'>Resolved</option>
+          <option value=''>All</option>
+        </select>
+        <span
+          style={{
+            fontSize: 12,
+            color: "var(--text-dim)",
+            alignSelf: "center",
+          }}
+        >
+          {total}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {loading ? (
+          <Loader />
+        ) : rows.length === 0 ? (
+          <EmptyState msg='No feedback yet' />
+        ) : (
+          rows.map((f) => {
+            const resolved = f.status === "resolved";
+            return (
+              <div
+                key={f.id}
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: "12px 16px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    marginBottom: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "2px 7px",
+                      borderRadius: 4,
+                      background: `${catColor(f.category)}22`,
+                      color: catColor(f.category),
+                      fontFamily: "DM Mono, monospace",
+                      flexShrink: 0,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {f.category}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                    {f.platform ?? "—"} · {f.app_version ?? "—"}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 11,
+                      color: "var(--text-dim)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {fmtDate(f.created_at)}
+                  </span>
+                  {resolved ? (
+                    <button
+                      onClick={() => setRowStatus(f.id, "open")}
+                      disabled={working === f.id}
+                      style={{
+                        padding: "3px 10px",
+                        borderRadius: 6,
+                        border: "1px solid var(--border)",
+                        background: "transparent",
+                        color: "var(--text-secondary)",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {working === f.id ? "…" : "Reopen"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setRowStatus(f.id, "resolved")}
+                      disabled={working === f.id}
+                      style={{
+                        padding: "3px 10px",
+                        borderRadius: 6,
+                        border: "1px solid #10B981",
+                        background: "rgba(16,185,129,0.08)",
+                        color: "#10B981",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {working === f.id ? "…" : "Resolve"}
+                    </button>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--text-primary)",
+                    whiteSpace: "pre-wrap",
+                    marginBottom: 8,
+                  }}
+                >
+                  {f.message}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                  }}
+                >
+                  <span>
+                    {f.user?.full_name ??
+                      f.user?.username ??
+                      f.user_id ??
+                      "unknown"}
+                  </span>
+                  {f.contact_email && (
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      · {f.contact_email}
+                    </span>
+                  )}
+                  {resolved && (
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        color: "#10B981",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      ✓ RESOLVED
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main admin page ──────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -2300,6 +2579,7 @@ export default function AdminPage() {
     { key: "flags", label: "Feature Flags" },
     { key: "costs", label: "Grading Costs" },
     { key: "settings", label: "Settings & Sync" },
+    { key: "feedback", label: "Feedback" },
   ];
 
   return (
@@ -2422,6 +2702,7 @@ export default function AdminPage() {
         {activeTab === "flags" && <FeatureFlags />}
         {activeTab === "costs" && <GradingCosts />}
         {activeTab === "settings" && <PlatformSettings />}
+        {activeTab === "feedback" && <Feedback />}
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import {
 import { PendingActionProvider } from "../../context/PendingActionContext";
 import { PlanProvider } from "../../context/PlanContext";
 import EmailVerificationGate from "../../components/EmailVerificationGate";
+import SupportFeedbackWidget from "@/components/SupportFeedbackWidget";
 
 // ─── Desktop sidebar nav — ordered to match mobile tab order ──────────────────
 const NAV_ITEMS = [
@@ -967,6 +968,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {/* Page content */}
                 <div className='app-content'>{children}</div>
               </main>
+
+              <SupportFeedbackWidget />
 
               {/* Mobile slide-out drawer — replaces the bottom tab bar */}
               <MobileDrawer
