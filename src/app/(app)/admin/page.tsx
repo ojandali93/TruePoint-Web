@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "../../../lib/api";
+import SyncPanel from "@/components/admin/SyncPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,8 +118,8 @@ type Tab =
   | "flags"
   | "costs"
   | "settings"
-  | "feedback";
-
+  | "feedback"
+  | "sync";
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
 function StatCard({
@@ -2580,6 +2581,7 @@ export default function AdminPage() {
     { key: "costs", label: "Grading Costs" },
     { key: "settings", label: "Settings & Sync" },
     { key: "feedback", label: "Feedback" },
+    { key: "sync", label: "Manual Sync" },
   ];
 
   return (
@@ -2703,6 +2705,7 @@ export default function AdminPage() {
         {activeTab === "costs" && <GradingCosts />}
         {activeTab === "settings" && <PlatformSettings />}
         {activeTab === "feedback" && <Feedback />}
+        {activeTab === "sync" && <SyncPanel />}
       </div>
     </div>
   );
