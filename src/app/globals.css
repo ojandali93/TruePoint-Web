@@ -803,3 +803,13 @@ body {
     padding: 60px 20px !important;
   }
 }
+
+@media (max-width: 768px) {
+  .portfolio-value-hero {
+    grid-template-columns: 1fr !important;
+  }
+  .portfolio-value-hero > div:first-child {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
