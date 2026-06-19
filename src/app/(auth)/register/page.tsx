@@ -482,7 +482,7 @@ function RegisterForm() {
           <Input
             label='Full name'
             type='text'
-            placeholder='Omar Jandali'
+            placeholder='John Doe'
             error={errors.full_name?.message}
             autoComplete='name'
             {...register("full_name")}
