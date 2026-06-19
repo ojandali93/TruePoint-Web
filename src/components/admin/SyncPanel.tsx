@@ -65,6 +65,18 @@ const GLOBAL_ACTIONS: SyncAction[] = [
     desc: "Recalculate snapshots for all users",
     path: () => `/admin/sync/portfolio`,
   },
+  {
+    key: "graded-inventory",
+    label: "Graded Pricing — Inventory",
+    desc: "Refresh PokeTrace comps for all inventoried cards",
+    path: () => `/admin/sync/graded-inventory`,
+  },
+  {
+    key: "graded-all",
+    label: "Graded Pricing — Full Catalog",
+    desc: "Refresh PokeTrace comps for every card (daily-cron job)",
+    path: () => `/admin/sync/graded-all`,
+  },
 ];
 
 export default function SyncPanel() {
