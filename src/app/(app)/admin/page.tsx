@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "../../../lib/api";
 import SyncPanel from "@/components/admin/SyncPanel";
+import UserDetailModal from "@/components/dashboard/UserDetailModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -665,6 +666,7 @@ function PlatformUsers() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [planModal, setPlanModal] = useState<UserRow | null>(null);
+  const [detailUser, setDetailUser] = useState<UserRow | null>(null);
   const [newPlan, setNewPlan] = useState<"collector" | "pro">("collector");
   const [planNote, setPlanNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -836,9 +838,26 @@ function PlatformUsers() {
                   fontSize: 12,
                 }}
               >
-                <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                <button
+                  onClick={() => setDetailUser(u)}
+                  title='View user details'
+                  style={{
+                    color: "var(--text-primary)",
+                    fontWeight: 500,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    margin: 0,
+                    font: "inherit",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    textDecorationLine: "underline",
+                    textDecorationColor: "var(--border)",
+                    textUnderlineOffset: 3,
+                  }}
+                >
                   {u.full_name ?? u.username ?? "—"}
-                </span>
+                </button>
                 <span
                   style={{
                     color: "var(--text-dim)",
@@ -950,6 +969,14 @@ function PlatformUsers() {
           })
         )}
       </div>
+
+      {detailUser && (
+        <UserDetailModal
+          userId={detailUser.id}
+          fallbackName={detailUser.full_name ?? detailUser.username ?? null}
+          onClose={() => setDetailUser(null)}
+        />
+      )}
 
       {planModal && (
         <div
