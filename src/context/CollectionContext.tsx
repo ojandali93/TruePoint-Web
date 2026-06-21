@@ -80,13 +80,10 @@ export function CollectionProvider({ children }: { children: ReactNode }) {
       const cols = res.data.data ?? [];
       setCollections(cols);
 
-      // On first load, set active to default collection if we haven't chosen one
-      setActiveCollectionId((prev) => {
-        if (prev !== null) return prev;
-        const def = cols.find((c) => c.is_default);
-        // Only auto-select default when user has multiple collections
-        return cols.length > 1 ? (def?.id ?? null) : null;
-      });
+      // Default landing view is "All Collections" (activeCollectionId = null).
+      // We intentionally do NOT auto-select the is_default collection on load —
+      // any explicit user selection is preserved via `prev`.
+      setActiveCollectionId((prev) => prev);
     } catch {
       // silently fail — user may not have collections yet
     } finally {

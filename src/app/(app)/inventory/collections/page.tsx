@@ -544,6 +544,59 @@ export default function CollectionsPage() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* All Collections — the default landing view. Always present, always
+              the default, not editable or deletable. */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "16px 20px",
+              borderRadius: 12,
+              background: "var(--surface)",
+              border: "1px solid var(--gold)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 4,
+                  background: "var(--gold)",
+                }}
+              />
+              <div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 500,
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  All Collections
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                  Every card across all collections · shown by default
+                </div>
+              </div>
+            </div>
+            <span
+              style={{
+                fontSize: 11,
+                fontFamily: "DM Mono, monospace",
+                letterSpacing: "0.06em",
+                color: "#0D0E11",
+                background: "var(--gold)",
+                padding: "4px 10px",
+                borderRadius: 6,
+              }}
+            >
+              DEFAULT
+            </span>
+          </div>
+
           {collections.map((col) => (
             <CollectionCard
               key={col.id}
