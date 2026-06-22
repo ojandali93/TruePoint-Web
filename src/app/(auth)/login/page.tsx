@@ -99,7 +99,7 @@ export default function LoginPage() {
                 marginBottom: 28,
               }}
             >
-              Sign in to your TruePoint account.
+              Sign in to your Reverse Holo account.
             </p>
 
             {serverError && (

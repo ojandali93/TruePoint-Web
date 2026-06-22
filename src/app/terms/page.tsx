@@ -19,7 +19,7 @@ export default function TermsPage() {
     >
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "60px 24px" }}>
         <Link
-          href="/"
+          href='/'
           style={{
             fontSize: 12,
             color: "var(--text-dim)",
@@ -29,7 +29,7 @@ export default function TermsPage() {
             fontFamily: "DM Mono, monospace",
           }}
         >
-          ← TruePoint TCG
+          ← Reverse Holo TCG
         </Link>
 
         <div
@@ -71,9 +71,9 @@ export default function TermsPage() {
           }}
         >
           <Section title='1. Acceptance of terms'>
-            By creating an account or using TruePoint TCG ("the service", "we",
-            "us"), you agree to these Terms of Service. If you do not agree, do
-            not use the service.
+            By creating an account or using Reverse Holo TCG ("the service",
+            "we", "us"), you agree to these Terms of Service. If you do not
+            agree, do not use the service.
           </Section>
 
           <Section title='2. Account responsibility'>
@@ -100,14 +100,15 @@ export default function TermsPage() {
           <Section title='5. AI grading reports'>
             AI grading predictions are estimates only, not guarantees. The
             actual grade assigned by a third-party grading service may differ.
-            TruePoint is not responsible for grading outcomes, submission costs,
-            or value differences resulting from reliance on AI predictions.
+            Reverse Holo is not responsible for grading outcomes, submission
+            costs, or value differences resulting from reliance on AI
+            predictions.
           </Section>
 
           <Section title='6. Market pricing'>
             Card values shown on the service are sourced from third-party APIs
             and may be inaccurate, outdated, or unavailable for some cards.
-            TruePoint does not buy, sell, or broker cards and makes no
+            Reverse Holo does not buy, sell, or broker cards and makes no
             representation about market value for the purpose of any specific
             transaction.
           </Section>
@@ -139,9 +140,9 @@ export default function TermsPage() {
           </Section>
 
           <Section title='11. Limitation of liability'>
-            To the maximum extent permitted by law, TruePoint's total liability
-            arising from your use of the service is limited to the amount you
-            paid in the 12 months preceding the claim.
+            To the maximum extent permitted by law, Reverse Holo's total
+            liability arising from your use of the service is limited to the
+            amount you paid in the 12 months preceding the claim.
           </Section>
 
           <Section title='12. Changes to these terms'>
@@ -154,10 +155,10 @@ export default function TermsPage() {
             Questions about these terms can be sent through the in-app support
             form (the 💬 button on any page) or directly to{" "}
             <a
-              href='mailto:support@truepointtcg.com'
+              href='mailto:support@reverseholo.io'
               style={{ color: "var(--gold)", textDecoration: "none" }}
             >
-              support@truepointtcg.com
+              support@reverseholo.io
             </a>
             .
           </Section>
@@ -174,7 +175,7 @@ export default function TermsPage() {
             textAlign: "center",
           }}
         >
-          © TruePoint TCG · All rights reserved
+          © Reverse Holo TCG · All rights reserved
         </div>
       </div>
     </div>

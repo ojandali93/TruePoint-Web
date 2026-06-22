@@ -68,8 +68,8 @@ export default function AuthLayout({
           }}
         >
           <Image
-            src='/tp-logo-gold-white.png'
-            alt='TruePoint TCG'
+            src='/RH-logo-gold-white.png'
+            alt='Reverse Holo TCG'
             height={40}
             width={180}
             style={{ objectFit: "contain" }}

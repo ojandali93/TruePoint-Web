@@ -45,7 +45,7 @@ const PLAN_META = {
     cadence: "Free forever",
     color: "#3DAA6E",
     features: [
-      "TruePoint centering score",
+      "Reverse Holo centering score",
       "Master set tracker (3 sets)",
       "Card search & live prices",
       "Set browser",
@@ -602,7 +602,7 @@ function CollectorStep({
             lineHeight: 1.6,
           }}
         >
-          This helps us personalize your TruePoint experience. All fields are
+          This helps us personalize your Reverse Holo experience. All fields are
           optional.
         </p>
       </div>
@@ -865,7 +865,7 @@ function BillingStep({
           lineHeight: 1.6,
         }}
       >
-        Secured by Stripe. TruePoint never stores your card details.
+        Secured by Stripe. Reverse Holo never stores your card details.
         <br />
         Cancel anytime before the trial ends.
       </p>
@@ -932,7 +932,7 @@ function ConfirmStep({
             maxWidth: 340,
           }}
         >
-          Welcome to TruePoint, collector. Your{" "}
+          Welcome to Reverse Holo, collector. Your{" "}
           <span style={{ color: meta.color }}>{meta.name}</span> account is
           ready.
         </p>

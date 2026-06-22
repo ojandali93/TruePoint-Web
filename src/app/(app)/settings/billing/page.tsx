@@ -22,7 +22,7 @@ const PLAN_DISPLAY: Record<
   starter: {
     name: "Starter",
     price: "$0/mo",
-    perks: ["TruePoint centering", "3 master sets", "Card search"],
+    perks: ["RH centering", "3 master sets", "Card search"],
   },
   collector: {
     name: "Collector",
@@ -166,7 +166,7 @@ export default function BillingSettingsPage() {
           marginBottom: 28,
         }}
       >
-        Manage your TruePoint plan
+        Manage your Reverse Holo plan
       </p>
 
       {loading ? (

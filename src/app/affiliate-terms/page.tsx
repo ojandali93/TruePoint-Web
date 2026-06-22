@@ -1,6 +1,6 @@
 // src/app/affiliate-terms/page.tsx
 //
-// Public page rendering the full TruePoint Affiliate & Partner Program
+// Public page rendering the full Reverse Holo Affiliate & Partner Program
 // Agreement. Linked from the affiliate claim screens (web + mobile) so a
 // prospective affiliate can read the exact terms before claiming a code.
 //
@@ -10,9 +10,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Affiliate & Partner Program Agreement · TruePoint TCG",
+  title: "Affiliate & Partner Program Agreement · Reverse Holo TCG",
   description:
-    "The full terms of the TruePoint TCG Affiliate & Partner Program.",
+    "The full terms of the Reverse Holo TCG Affiliate & Partner Program.",
 };
 
 const EFFECTIVE = "06/12/2026";
@@ -85,7 +85,7 @@ export default function AffiliateTermsPage() {
             marginBottom: 10,
           }}
         >
-          TRUEPOINT TCG
+          REVERSE HOLO TCG
         </div>
         <h1
           style={{
@@ -123,14 +123,14 @@ export default function AffiliateTermsPage() {
           </strong>
           ) is entered into between{" "}
           <strong style={{ color: "var(--text-primary)" }}>
-            Truepoint TCG Inc.
+            Reverse Holo TCG Inc.
           </strong>{" "}
           (the{" "}
           <strong style={{ color: "var(--text-primary)" }}>
             &ldquo;Company,&rdquo; &ldquo;we,&rdquo; or &ldquo;us&rdquo;
           </strong>
-          ), operator of the TruePoint TCG application and the website at
-          truepointtcg.com, and the individual or entity that enrolls in the
+          ), operator of the Reverse Holo TCG application and the website at
+          reverseholo.io, and the individual or entity that enrolls in the
           Program and accepts these terms (the{" "}
           <strong style={{ color: "var(--text-primary)" }}>
             &ldquo;Affiliate&rdquo; or &ldquo;you&rdquo;
@@ -140,9 +140,9 @@ export default function AffiliateTermsPage() {
 
         <Section id='overview' title='1. Overview of the Program'>
           <Clause n='1.1'>
-            The TruePoint Affiliate &amp; Partner Program (the
+            The Reverse Holo Affiliate &amp; Partner Program (the
             &ldquo;Program&rdquo;) allows approved Affiliates to refer new users
-            to TruePoint using a unique referral code. When a referred user
+            to Reverse Holo using a unique referral code. When a referred user
             subscribes to a paid plan, the Affiliate may earn commissions as set
             out in this Agreement. Participation is voluntary, non-exclusive,
             and may be modified or terminated as provided herein.
@@ -155,7 +155,7 @@ export default function AffiliateTermsPage() {
             to the Affiliate, which a new user enters during signup.
           </Clause>
           <Clause n='2.2'>
-            <em>&ldquo;Referred Account&rdquo;</em> means a TruePoint user
+            <em>&ldquo;Referred Account&rdquo;</em> means a Reverse Holo user
             account that entered the Affiliate&rsquo;s valid Referral Code at
             the time the account was created and that is attributed to the
             Affiliate under Section 4.
@@ -471,7 +471,7 @@ export default function AffiliateTermsPage() {
               clicks, or misleading advertising to obtain signups;
             </li>
             <li>
-              misrepresent TruePoint, its features, pricing, or your
+              misrepresent Reverse Holo, its features, pricing, or your
               relationship to the Company;
             </li>
             <li>
@@ -645,10 +645,10 @@ export default function AffiliateTermsPage() {
         >
           Questions about the Program? Contact{" "}
           <a
-            href='mailto:support@truepointtcg.com'
+            href='mailto:support@reverseholo.io'
             style={{ color: "var(--gold)" }}
           >
-            contact@truepointtcg.com
+            support@reverseholo.io
           </a>
           .
         </div>

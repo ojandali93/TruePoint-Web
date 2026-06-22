@@ -30,7 +30,7 @@ export default function PrivacyPage() {
             fontFamily: "DM Mono, monospace",
           }}
         >
-          ← TruePoint TCG
+          ← Reverse Holo TCG
         </Link>
 
         <div
@@ -72,10 +72,10 @@ export default function PrivacyPage() {
           }}
         >
           <Section title='1. Who we are'>
-            TruePoint TCG ("we", "us") is a Pokémon trading card portfolio and
-            grading-analysis service. This policy describes what information we
-            collect when you use our iOS app, Android app, or website at
-            truepointtcg.com (collectively, "the service"), and how we use it.
+            Reverse Holo TCG ("we", "us") is a Pokémon trading card portfolio
+            and grading-analysis service. This policy describes what information
+            we collect when you use our iOS app, Android app, or website at
+            reverseholo.io (collectively, "the service"), and how we use it.
           </Section>
 
           <Section title='2. Information you provide'>
@@ -159,10 +159,10 @@ export default function PrivacyPage() {
             data-protection rights, you may also request a copy of your data or
             its deletion by emailing{" "}
             <a
-              href='mailto:support@truepointtcg.com'
+              href='mailto:support@reverseholo.io'
               style={{ color: "var(--gold)" }}
             >
-              support@truepointtcg.com
+              support@reverseholo.io
             </a>
             . We respond within 30 days.
           </Section>
@@ -198,10 +198,10 @@ export default function PrivacyPage() {
           <Section title='15. Contact'>
             Questions or requests:{" "}
             <a
-              href='mailto:support@truepointtcg.com'
+              href='mailto:support@reverseholo.io'
               style={{ color: "var(--gold)" }}
             >
-              support@truepointtcg.com
+              support@reverseholo.io
             </a>
             .
           </Section>
@@ -218,7 +218,7 @@ export default function PrivacyPage() {
             textAlign: "center",
           }}
         >
-          © TruePoint TCG · All rights reserved
+          © Reverse Holo TCG · All rights reserved
         </div>
       </div>
     </div>

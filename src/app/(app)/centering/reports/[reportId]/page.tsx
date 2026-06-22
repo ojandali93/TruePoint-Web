@@ -4,7 +4,7 @@
  * Centering report detail — /centering/reports/[reportId]
  *
  * Shows a single saved analysis with the image + border overlay, measurements,
- * percentages, predicted grades, and TruePoint score.
+ * percentages, predicted grades, and Reverse Holo score.
  */
 
 import { use } from "react";
@@ -72,7 +72,7 @@ export default function CenteringReportDetailPage({
     );
   }
 
-  const score = report.truepointScore;
+  const score = report.rhScore;
   const scoreColor = scoreTierColor(score);
   const date = new Date(report.createdAt);
   const dateStr = date.toLocaleDateString("en-US", {
@@ -175,7 +175,7 @@ export default function CenteringReportDetailPage({
                   marginBottom: 4,
                 }}
               >
-                TRUEPOINT SCORE
+                REVERSE HOLO SCORE
               </div>
               <div
                 style={{
@@ -217,7 +217,7 @@ export default function CenteringReportDetailPage({
                 marginBottom: 14,
               }}
             >
-              CENTERING PERCENTAGES
+              REVERSE HOLO PERCENTAGES
             </div>
             <div
               style={{
@@ -259,7 +259,7 @@ export default function CenteringReportDetailPage({
                 marginBottom: 14,
               }}
             >
-              BORDER MEASUREMENTS (MM)
+              REVERSE HOLO MEASUREMENTS (MM)
             </div>
             <div
               style={{
@@ -314,7 +314,7 @@ export default function CenteringReportDetailPage({
                 marginBottom: 14,
               }}
             >
-              PREDICTED GRADES
+              REVERSE HOLO GRADES
             </div>
             <div
               style={{

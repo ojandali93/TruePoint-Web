@@ -150,7 +150,7 @@ export default function NotificationSettingsPage() {
           />
           <ToggleRow
             label='Product news'
-            sublabel='New features and TruePoint updates'
+            sublabel='New features and Reverse Holo updates'
             value={settings.notify_marketing}
             onChange={() => handleToggle("notify_marketing")}
             isLast

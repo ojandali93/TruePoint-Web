@@ -539,7 +539,7 @@ function ApproveModal({
         }}
       >
         {isMember
-          ? "Has a TruePoint account → approval grants Pro instantly + emails them."
+          ? "Has a Reverse Holo account → approval grants Pro instantly + emails them."
           : "No account yet → approval emails an invite to create one with free Pro."}
       </div>
 

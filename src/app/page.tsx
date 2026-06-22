@@ -6,8 +6,8 @@ import { createClient } from "../lib/supabase";
 import { ROUTES } from "../constants/routes";
 import { useEffect, useState } from "react";
 
-// TODO: confirm this is a monitored inbox (Play Console showed contact@truepointtcg.com).
-const SUPPORT_EMAIL = "support@truepointtcg.com";
+// TODO: confirm this is a monitored inbox (Play Console showed contact@reverseholo.com).
+const SUPPORT_EMAIL = "support@reverseholo.io";
 
 const TICKER_ITEMS = [
   // Vintage chase cards
@@ -192,8 +192,8 @@ const TICKER_ITEMS = [
 const FEATURES = [
   {
     number: "01",
-    label: "Precision Grading",
-    title: "TruePoint Score",
+    label: "Reverse Holo Grading",
+    title: "Reverse Holo Score",
     description:
       "Upload front and back scans. Place border lines. Receive a weighted centering score across L/R and T/B axes — the same measurement graders use, in your hands before submission.",
     stats: [
@@ -288,7 +288,7 @@ const FEATURE_TIMELINE = [
     title: "Live Portfolio Tracking",
     desc: "Watch the total value of everything you own move in real time — raw singles, graded slabs, and sealed product in one number, with daily history and gain/loss at a glance.",
     src: "portfolio.png",
-    alt: "TruePoint portfolio value dashboard",
+    alt: "Reverse Holo portfolio value dashboard",
   },
   {
     num: "02",
@@ -347,7 +347,7 @@ const FEATURE_TIMELINE = [
 const TESTIMONIALS = [
   {
     quote:
-      "I was about to send a $400 Charizard to PSA. TruePoint flagged a soft corner I couldn't even see and called a 9. Saved me the fee and the heartbreak.",
+      "I was about to send a $400 Charizard to PSA. Reverse Holo flagged a soft corner I couldn't even see and called a 9. Saved me the fee and the heartbreak.",
     name: "Marcus R.", // TODO: real name + permission
     role: "Vintage collector",
   },
@@ -359,7 +359,7 @@ const TESTIMONIALS = [
   },
   {
     quote:
-      "Six years of spreadsheets, gone. I rebuilt my entire collection in TruePoint in an afternoon and haven't opened Excel since.",
+      "Six years of spreadsheets, gone. I rebuilt my entire collection in Reverse Holo in an afternoon and haven't opened Excel since.",
     name: "Priya N.", // TODO: real name + permission
     role: "Modern collector",
   },
@@ -371,7 +371,7 @@ const TESTIMONIALS = [
   },
   {
     quote:
-      "The centering tool matches what graders actually do. My last three PSA submissions came back within half a grade of what TruePoint predicted.",
+      "The centering tool matches what graders actually do. My last three PSA submissions came back within half a grade of what Reverse Holo predicted.",
     name: "Alex M.", // TODO: real name + permission
     role: "Grader",
   },
@@ -385,21 +385,21 @@ const TESTIMONIALS = [
 
 const NEWS_ITEMS = [
   {
-    type: "TRUEPOINT UPDATE",
+    type: "REVERSE HOLO UPDATE",
     date: "June 2026",
-    title: "TruePoint is live on iOS and Android",
-    body: "TruePoint TCG is now available on the App Store and Google Play. Track your portfolio, predict grades, and run the grading math from your phone.",
+    title: "Reverse Holo is live on iOS and Android",
+    body: "Reverse Holo TCG is now available on the App Store and Google Play. Track your portfolio, predict grades, and run the grading math from your phone.",
     tag: "Launch",
   },
   {
     type: "EVENTS",
     date: "June 2026",
     title: "Find us at the LA Card Expo · June 22–24",
-    body: "The TruePoint team will be at the LA Card Expo. Come see live grade predictions, talk shop, and get a first look at what we're building next.",
+    body: "The Reverse Holo team will be at the LA Card Expo. Come see live grade predictions, talk shop, and get a first look at what we're building next.",
     tag: "Event",
   },
   {
-    type: "TRUEPOINT UPDATE",
+    type: "REVERSE HOLO UPDATE",
     date: "June 2026",
     title: "AI grade predictions across PSA, BGS, CGC & TAG",
     body: "Photograph a raw card and get a predicted grade with centering, corners, edges, and surface sub-scores — before you spend a cent submitting.",
@@ -421,7 +421,7 @@ const ROADMAP = [
     status: "NOW",
     color: "#3DAA6E",
     items: [
-      "TruePoint centering score",
+      "Reverse Holo centering score",
       "Card search & set browser",
       "Auth & user profiles",
       "Market pricing (3 sources)",
@@ -472,7 +472,7 @@ const PLANS = [
     featured: false,
     cta: "Get started free",
     features: [
-      { text: "TruePoint centering score", included: true },
+      { text: "Reverse Holo centering score", included: true },
       { text: "Master set tracker", included: true, note: "3 sets" },
       { text: "Card search & live prices", included: true },
       { text: "Set browser", included: true },
@@ -542,7 +542,7 @@ function ContactForm() {
   const handleSubmit = () => {
     // TODO (optional): POST to your Render backend for real tickets instead of mailto.
     const subject = encodeURIComponent(
-      `TruePoint support — ${name || "inquiry"}`,
+      `Reverse Holo support — ${name || "inquiry"}`,
     );
     const body = encodeURIComponent(`${message}\n\n— ${name}\n${email}`);
     window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
@@ -645,9 +645,9 @@ export default function LandingPage() {
           }}
         >
           <Image
-            src='/tp-logo-gold-white.png'
-            alt='TruePoint TCG'
-            height={36}
+            src='/rh-logo-gold-white.png'
+            alt='Reverse Holo TCG'
+            height={26}
             width={160}
             style={{ objectFit: "contain" }}
             priority
@@ -935,7 +935,7 @@ export default function LandingPage() {
                   href='https://apps.apple.com/us/app/truepoint-tcg/id6767379465'
                   target='_blank'
                   rel='noopener noreferrer'
-                  aria-label='Download TruePoint TCG on the App Store'
+                  aria-label='Download Reverse Holo TCG on the App Store'
                   style={{
                     display: "inline-block",
                     lineHeight: 0,
@@ -983,7 +983,7 @@ export default function LandingPage() {
                   href='https://play.google.com/store/apps/details?id=app.truepointinc.truepointtcg'
                   target='_blank'
                   rel='noopener noreferrer'
-                  aria-label='Download TruePoint TCG on Google Play'
+                  aria-label='Download Reverse Holo TCG on Google Play'
                   style={{
                     display: "inline-block",
                     lineHeight: 0,
@@ -1071,7 +1071,7 @@ export default function LandingPage() {
                 up: true,
               },
               {
-                label: "TruePoint Score",
+                label: "RH Score",
                 value: "94.2",
                 sub: "Charizard ex SIR Front",
                 neutral: true,
@@ -1360,7 +1360,7 @@ export default function LandingPage() {
                 marginBottom: 16,
               }}
             >
-              WHY TRUEPOINT
+              WHY REVERSE HOLO
             </div>
             <h2
               className='font-display'
@@ -1385,8 +1385,8 @@ export default function LandingPage() {
                 lineHeight: 1.8,
               }}
             >
-              Most apps do one thing — scan, or track, or check a price.
-              TruePoint is the all-in-one decision layer for collectors: whether
+              Most apps do one thing — scan, or track, or check a price. Reverse
+              Holo is the all-in-one decision layer for collectors: whether
               you&apos;re fifty cards deep or managing a five-figure portfolio,
               every tool you need to decide what to grade, hold, trade, or chase
               lives in one place. Here&apos;s what that looks like.
@@ -1754,8 +1754,8 @@ export default function LandingPage() {
               }}
             >
               Whether you collect sealed boxes for investment, pull raw singles
-              to grade, or track a binder full of slabs — TruePoint handles all
-              three in one unified inventory.
+              to grade, or track a binder full of slabs — Reverse Holo handles
+              all three in one unified inventory.
             </p>
           </div>
           <div
@@ -1889,7 +1889,7 @@ export default function LandingPage() {
               },
               {
                 step: "03",
-                title: "Get your TruePoint Score",
+                title: "Get your RH Score",
                 body: "Instant centering percentages and grade predictions for PSA, BGS, CGC, and TAG.",
               },
               {
@@ -1960,7 +1960,7 @@ export default function LandingPage() {
               COLLECTORS
               <br />
               <span style={{ color: "var(--text-secondary)" }}>
-                RATE TRUEPOINT.
+                RATE REVERSE HOLO.
               </span>
             </h2>
           </div>
@@ -2442,7 +2442,7 @@ export default function LandingPage() {
                     className='font-mono'
                     style={{
                       fontSize: 10,
-                      color: item.type.includes("TRUEPOINT")
+                      color: item.type.includes("REVERSE HOLO")
                         ? "var(--gold)"
                         : "var(--text-secondary)",
                       letterSpacing: "0.08em",
@@ -2677,11 +2677,11 @@ export default function LandingPage() {
               className='font-display'
               style={{ fontSize: 16, letterSpacing: "0.08em" }}
             >
-              TRUEPOINT TCG
+              REVERSE HOLO TCG
             </span>
           </div>
           <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-            © 2026 TruePoint TCG. All rights reserved.
+            © 2026 Reverse Holo TCG. All rights reserved.
           </div>
           <div style={{ display: "flex", gap: 24 }}>
             <a

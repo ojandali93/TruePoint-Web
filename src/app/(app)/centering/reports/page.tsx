@@ -304,7 +304,7 @@ function ReportRow({
   onOpen: () => void;
   onDelete: () => void;
 }) {
-  const score = report.truepointScore;
+  const score = report.rhScore;
   const color = scoreTierColor(score);
   const date = new Date(report.createdAt);
   const dateStr = date.toLocaleDateString("en-US", {
@@ -424,7 +424,6 @@ function ReportRow({
         ))}
       </div>
 
-      {/* TruePoint score */}
       <div style={{ textAlign: "center" }}>
         <div
           style={{
@@ -435,7 +434,7 @@ function ReportRow({
             fontFamily: "DM Mono, monospace",
           }}
         >
-          TRUEPOINT
+          REVERSE HOLO
         </div>
         <div
           style={{

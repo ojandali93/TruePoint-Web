@@ -54,7 +54,7 @@ export interface CenteringReport {
     tbWorse: number;
     worstAxis: number;
   };
-  truepointScore: number;
+  rhScore: number;
   grades: {
     psa: string;
     bgs: string;
@@ -195,7 +195,7 @@ export function useCenteringReport(reportId: string | undefined) {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Tier color for a TruePoint score (0–100). Mirrors grading conventions:
+ * Tier color for a Reverse Holo score (0–100). Mirrors grading conventions:
  * 95+ green, 85+ blue, 70+ gold, 50+ orange, below 50 red.
  */
 export function scoreTierColor(score: number): string {

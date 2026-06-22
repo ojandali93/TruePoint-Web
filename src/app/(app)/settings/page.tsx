@@ -162,7 +162,7 @@ function ActiveSessions({
   const handleRevoke = async (rowId: string) => {
     if (
       !window.confirm(
-        "Sign out this device? It will need to log in again to use TruePoint.",
+        "Sign out this device? It will need to log in again to use Reverse Holo.",
       )
     )
       return;
@@ -840,12 +840,12 @@ export default function SettingsPage() {
         </div>
 
         {/* Active sessions */}
-        <ActiveSessions
+        {/* <ActiveSessions
           devices={devices}
           currentDeviceId={currentDeviceId}
           onRevoke={handleRevokeDevice}
           refreshing={devicesRefreshing}
-        />
+        /> */}
 
         {/* Support & legal */}
         <div
@@ -993,7 +993,7 @@ export default function SettingsPage() {
             fontFamily: "DM Mono, monospace",
           }}
         >
-          TruePoint TCG · v1.0
+          Reverse Holo TCG · v1.0
         </div>
       </div>
 

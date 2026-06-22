@@ -34,7 +34,7 @@ export interface CenteringReport {
     tbWorse: number;
     worstAxis: number;
   };
-  truepointScore: number;
+  rhScore: number;
   grades: { psa: string; bgs: string; cgc: string; sgc: string; tag: string };
   createdAt: string;
 }
@@ -42,7 +42,7 @@ export interface CenteringReport {
 export interface CenteringAnalysis {
   measurements: CenteringReport["measurements"];
   percentages: CenteringReport["percentages"];
-  truepointScore: number;
+  rhScore: number;
   grades: CenteringReport["grades"];
 }
 

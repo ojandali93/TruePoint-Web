@@ -170,7 +170,7 @@ export default function AffiliatesPage() {
             textDecoration: "none",
           }}
         >
-          ← TruePoint TCG
+          ← Reverse Holo TCG
         </Link>
         <h1
           className='font-display'
@@ -183,7 +183,7 @@ export default function AffiliatesPage() {
             color: "var(--text-primary)",
           }}
         >
-          BECOME A <span className='gold-shimmer'>TRUEPOINT</span> AFFILIATE
+          BECOME A <span className='gold-shimmer'>REVERSE HOLO</span> AFFILIATE
         </h1>
         <p
           style={{
@@ -194,7 +194,7 @@ export default function AffiliatesPage() {
             marginBottom: 36,
           }}
         >
-          Share TruePoint with your audience and earn recurring commission on
+          Share Reverse Holo with your audience and earn recurring commission on
           every member who joins with your code — plus Pro, free, as a partner.
         </p>
 
@@ -289,7 +289,7 @@ export default function AffiliatesPage() {
                 {existingStatus === "active"
                   ? "Your partner account is active. Your referral code and dashboard live in the app."
                   : existingStatus === "rejected"
-                    ? "If you think this was a mistake, reach out to support@truepointtcg.com."
+                    ? "If you think this was a mistake, reach out to support@reverseholo.io."
                     : "We've received your application and will email you once it's reviewed."}
               </div>
             </div>
@@ -356,7 +356,7 @@ export default function AffiliatesPage() {
               >
                 {isMember
                   ? "You're signed in — we'll link this to your account."
-                  : "Already have a TruePoint account? Sign in first, then apply from the app."}
+                  : "Already have a Reverse Holo account? Sign in first, then apply from the app."}
               </p>
 
               {error && (

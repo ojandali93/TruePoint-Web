@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TruePoint TCG — The Collector's Intelligence Platform",
+  title: "Reverse Holo TCG — The Collector's Intelligence Platform",
   description:
     "Precision centering analysis, real-time market intelligence, and portfolio management for Pokémon TCG collectors.",
   keywords: [
@@ -25,9 +25,9 @@ export const metadata: Metadata = {
     "collection tracker",
   ],
   icons: {
-    icon: "/TP-icon-white.png",
-    shortcut: "/TP-icon-white.png",
-    apple: "/TP-icon-white.png",
+    icon: "/RH-icon-white.png",
+    shortcut: "/RH-icon-white.png",
+    apple: "/RH-icon-white.png",
   },
 };
 

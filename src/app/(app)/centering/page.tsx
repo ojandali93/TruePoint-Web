@@ -33,7 +33,7 @@ interface CenteringResult {
     tbWorse: number;
     worstAxis: number;
   };
-  truepointScore: number;
+  rhScore: number;
   grades: { psa: string; bgs: string; cgc: string; sgc: string; tag: string };
 }
 
@@ -42,7 +42,7 @@ interface SavedReport {
   label: string | null;
   side: string;
   imageUrl: string | null;
-  truepointScore: number;
+  rhScore: number;
   percentages: CenteringResult["percentages"];
   measurements: CenteringResult["measurements"];
   grades: CenteringResult["grades"];
@@ -442,7 +442,7 @@ function ReportModal({
   report: SavedReport;
   onClose: () => void;
 }) {
-  const color = getScoreColor(report.truepointScore);
+  const color = getScoreColor(report.rhScore);
   return (
     <div
       style={{
@@ -571,7 +571,7 @@ function ReportModal({
               marginBottom: 6,
             }}
           >
-            TRUEPOINT SCORE
+            REVERSE HOLO SCORE
           </div>
           <div
             style={{
@@ -582,10 +582,10 @@ function ReportModal({
               lineHeight: 1,
             }}
           >
-            {report.truepointScore.toFixed(1)}
+            {report.rhScore.toFixed(1)}
           </div>
           <div style={{ fontSize: 13, color, marginTop: 6, fontWeight: 500 }}>
-            {getScoreLabel(report.truepointScore)}
+            {getScoreLabel(report.rhScore)}
           </div>
         </div>
 
@@ -838,7 +838,7 @@ function ReportsTab() {
         }}
       >
         {reports.map((report) => {
-          const color = getScoreColor(report.truepointScore);
+          const color = getScoreColor(report.rhScore);
           return (
             <button
               key={report.id}
@@ -927,7 +927,7 @@ function ReportsTab() {
                     lineHeight: 1,
                   }}
                 >
-                  {report.truepointScore.toFixed(1)}
+                  {report.rhScore.toFixed(1)}
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1211,8 +1211,8 @@ function AxisBar({
 // ─── Score display ─────────────────────────────────────────────────────────────
 
 function ScoreDisplay({ result }: { result: CenteringResult }) {
-  const { truepointScore, percentages, grades, measurements } = result;
-  const color = getScoreColor(truepointScore);
+  const { rhScore, percentages, grades, measurements } = result;
+  const color = getScoreColor(rhScore);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1234,7 +1234,7 @@ function ScoreDisplay({ result }: { result: CenteringResult }) {
             marginBottom: 8,
           }}
         >
-          TRUEPOINT SCORE
+          REVERSE HOLO SCORE
         </div>
         <div
           style={{
@@ -1245,10 +1245,10 @@ function ScoreDisplay({ result }: { result: CenteringResult }) {
             lineHeight: 1,
           }}
         >
-          {truepointScore.toFixed(1)}
+          {rhScore.toFixed(1)}
         </div>
         <div style={{ fontSize: 13, color, marginTop: 8, fontWeight: 500 }}>
-          {getScoreLabel(truepointScore)}
+          {getScoreLabel(rhScore)}
         </div>
       </div>
 
@@ -2605,7 +2605,7 @@ export default function CenteringPage() {
                 marginBottom: 4,
               }}
             >
-              TruePoint Score
+              Reverse Holo Score
             </h1>
             <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
               Upload card scans · drag border lines · get your score
@@ -2813,12 +2813,12 @@ export default function CenteringPage() {
                               fontSize: 10,
                               padding: "1px 6px",
                               borderRadius: 10,
-                              background: `${getScoreColor(r.truepointScore)}20`,
-                              color: getScoreColor(r.truepointScore),
+                              background: `${getScoreColor(r.rhScore)}20`,
+                              color: getScoreColor(r.rhScore),
                               fontFamily: "DM Mono, monospace",
                             }}
                           >
-                            {r.truepointScore.toFixed(1)}
+                            {r.rhScore.toFixed(1)}
                           </span>
                         )}
                       </button>
@@ -3095,11 +3095,11 @@ export default function CenteringPage() {
                             style={{
                               fontSize: 15,
                               fontWeight: 700,
-                              color: getScoreColor(r.truepointScore),
+                              color: getScoreColor(r.rhScore),
                               fontFamily: "DM Mono, monospace",
                             }}
                           >
-                            {r.truepointScore.toFixed(1)}
+                            {r.rhScore.toFixed(1)}
                           </span>
                         </div>
                       </div>
@@ -3115,7 +3115,7 @@ export default function CenteringPage() {
                       <span
                         style={{ fontSize: 12, color: "var(--text-secondary)" }}
                       >
-                        Avg TruePoint Score
+                        Avg Reverse Holo Score
                       </span>
                       <span
                         style={{
@@ -3123,15 +3123,12 @@ export default function CenteringPage() {
                           fontWeight: 700,
                           fontFamily: "DM Mono, monospace",
                           color: getScoreColor(
-                            (frontResult.truepointScore +
-                              backResult.truepointScore) /
-                              2,
+                            (frontResult.rhScore + backResult.rhScore) / 2,
                           ),
                         }}
                       >
                         {(
-                          (frontResult.truepointScore +
-                            backResult.truepointScore) /
+                          (frontResult.rhScore + backResult.rhScore) /
                           2
                         ).toFixed(1)}
                       </span>
