@@ -68,7 +68,7 @@ export default function AuthLayout({
           }}
         >
           <Image
-            src='/RH-logo-gold-white.png'
+            src='/rh-logo-gold-white.png'
             alt='Reverse Holo TCG'
             height={40}
             width={180}

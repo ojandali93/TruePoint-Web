@@ -146,7 +146,7 @@ function MobileDrawer({
         {/* Header with logo + close */}
         <div className='mobile-drawer-head'>
           <Image
-            src='/RH-logo-gold-white.png'
+            src='/rh-logo-gold-white.png'
             alt='Reverse Holo TCG'
             width={120}
             height={28}
@@ -749,7 +749,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   }}
                 >
                   <Image
-                    src='/RH-logo-gold-white.png'
+                    src='/rh-logo-gold-white.png'
                     alt='Reverse Holo TCG'
                     width={130}
                     height={30}
@@ -943,7 +943,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     </svg>
                   </button>
                   <Image
-                    src='/RH-logo-gold-white.png'
+                    src='/rh-logo-gold-white.png'
                     alt='Reverse Holo TCG'
                     width={110}
                     height={26}
