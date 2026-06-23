@@ -2,6 +2,8 @@ export interface PokemonSet {
   id: string;
   name: string;
   series: string;
+  language?: string | null;
+  game?: string | null; // "pokemon" | "onepiece" | … — defaults to "pokemon"
   printedTotal: number;
   total: number;
   releaseDate: string;

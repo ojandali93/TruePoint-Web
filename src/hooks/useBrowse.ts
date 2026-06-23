@@ -23,6 +23,7 @@ export interface PokemonSet {
   total: number;
   releaseDate: string;
   language?: string | null;
+  game?: string | null; // "pokemon" | "onepiece" | … — defaults to "pokemon"
   images: { symbol: string; logo: string };
 }
 

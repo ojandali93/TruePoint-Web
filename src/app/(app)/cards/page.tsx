@@ -23,23 +23,43 @@ import {
 } from "../../../lib/setSeries";
 import { SetLogoPlaceholder } from "@/components/SetLogoPlaceholder.web";
 
+// Game switcher options. `value` must match the `game` value the backend
+// stamps on sets. "pokemon" is the default; sets with no game are treated as
+// it, so this is forward-compatible — add a line here and stamp the same value
+// on the backend when a new game's catalog is synced.
+const GAME_OPTIONS: { value: string; label: string }[] = [
+  { value: "pokemon", label: "Pokémon" },
+  { value: "onepiece", label: "One Piece" },
+];
+
 export default function SetsPage() {
   const router = useRouter();
   const { sets, loading, error } = useSets();
   const [search, setSearch] = useState("");
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
   const [language, setLanguage] = useState<"English" | "Japanese">("English");
+  const [game, setGame] = useState<string>("pokemon");
 
-  // Search-filter first
-  // Language filter first, then search
+  const gameLabel =
+    GAME_OPTIONS.find((g) => g.value === game)?.label ?? "Pokémon";
+
+  // Game filter first, then language, then search. Sets with no game stamped
+  // are treated as Pokémon (the original catalog).
   const searched = useMemo(
     () =>
       sets
+        .filter((s) => (s.game ?? "pokemon") === game)
         .filter((s) => getSetLanguage(s) === language)
         .filter((s) =>
           !search ? true : s.name.toLowerCase().includes(search.toLowerCase()),
         ),
-    [sets, search, language],
+    [sets, search, language, game],
+  );
+
+  // Count of sets in the selected game (independent of language/search).
+  const gameSetCount = useMemo(
+    () => sets.filter((s) => (s.game ?? "pokemon") === game).length,
+    [sets, game],
   );
 
   // Group into series buckets (derived from name)
@@ -78,10 +98,10 @@ export default function SetsPage() {
             marginBottom: 4,
           }}
         >
-          Pokémon TCG Sets
+          {gameLabel} TCG Sets
         </h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-          {sets.length} sets across all series
+          {gameSetCount} sets across all series
         </p>
       </div>
 
@@ -118,6 +138,34 @@ export default function SetsPage() {
             ⌕
           </span>
         </div>
+
+        {/* Game switcher — sits next to the search bar */}
+        <select
+          value={game}
+          onChange={(e) => {
+            setGame(e.target.value);
+            setSelectedSeries(null); // series buckets differ per game
+          }}
+          aria-label='Game'
+          style={{
+            background: "var(--surface)",
+            border: `1px solid ${game !== "pokemon" ? "var(--gold)" : "var(--border)"}`,
+            color: game !== "pokemon" ? "var(--gold)" : "var(--text-primary)",
+            borderRadius: 8,
+            padding: "10px 14px",
+            fontSize: 13,
+            fontFamily: "inherit",
+            cursor: "pointer",
+            outline: "none",
+            minWidth: 130,
+          }}
+        >
+          {GAME_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
 
         <div style={{ display: "flex", gap: 8 }}>
           <SeriesChip
@@ -166,7 +214,11 @@ export default function SetsPage() {
         ))}
 
       {!loading && !error && displayed.length === 0 && (
-        <div style={messageStyle}>No sets match your filters.</div>
+        <div style={messageStyle}>
+          {gameSetCount === 0
+            ? `No ${gameLabel} sets in the catalog yet. They'll appear here once they're synced.`
+            : "No sets match your filters."}
+        </div>
       )}
     </div>
   );
