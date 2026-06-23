@@ -6,7 +6,7 @@ import { createClient } from "../lib/supabase";
 import { ROUTES } from "../constants/routes";
 import { useEffect, useState } from "react";
 
-// TODO: confirm this is a monitored inbox (Play Console showed contact@reverseholo.com).
+// Support inbox for the marketing site contact form.
 const SUPPORT_EMAIL = "support@reverseholo.io";
 
 const TICKER_ITEMS = [
