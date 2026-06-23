@@ -9,12 +9,16 @@ import {
 } from "../../../context/PendingActionContext";
 import { ROUTES } from "../../../constants/routes";
 import api from "../../../lib/api";
+import SoldModal, {
+  type SoldModalItem,
+} from "../../../components/inventory/SoldModal";
+import SoldView from "../../../components/inventory/SoldView";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ItemType = "raw_card" | "graded_card" | "sealed_product";
 type GradingCompany = "PSA" | "BGS" | "CGC" | "SGC" | "TAG";
-type FilterTab = "all" | "raw_card" | "graded_card" | "sealed_product";
+type FilterTab = "all" | "raw_card" | "graded_card" | "sealed_product" | "sold";
 type ConditionGrade = "NM" | "LP" | "MP" | "HP" | "DM";
 
 interface CardRef {
@@ -291,6 +295,7 @@ function ItemCard({
   onEdit,
   onDelete,
   onOpen,
+  onMarkSold,
   selected,
   onSelect,
 }: {
@@ -298,6 +303,7 @@ function ItemCard({
   onEdit: (item: InventoryItem) => void;
   onDelete: (id: string) => void;
   onOpen: (item: InventoryItem) => void;
+  onMarkSold: (item: InventoryItem) => void;
   selected?: boolean;
   onSelect?: (id: string) => void;
 }) {
@@ -471,6 +477,13 @@ function ItemCard({
                       },
                     ]
                   : []),
+                {
+                  label: "Mark as sold",
+                  action: () => {
+                    onMarkSold(item);
+                    setMenuOpen(false);
+                  },
+                },
                 {
                   label: "Remove",
                   action: () => {
@@ -2131,6 +2144,10 @@ export default function InventoryPage() {
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [openItem, setOpenItem] = useState<InventoryItem | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [soldModalItem, setSoldModalItem] = useState<InventoryItem | null>(
+    null,
+  );
+  const [soldCount, setSoldCount] = useState(0);
 
   const {
     collections,
@@ -2202,6 +2219,15 @@ export default function InventoryPage() {
       })) as InventoryItem[];
       setItems(normalized);
       setSummary(res.data.data.summary ?? null);
+      // Sold count for the tab badge (cheap; SoldView fetches full data itself)
+      try {
+        const soldRes = await api.get<{ data: { summary: { count: number } } }>(
+          "/inventory/sold",
+        );
+        setSoldCount(soldRes.data.data.summary?.count ?? 0);
+      } catch {
+        /* non-fatal */
+      }
     } catch (err) {
       console.error("[Inventory] Load failed:", err);
     } finally {
@@ -2247,6 +2273,7 @@ export default function InventoryPage() {
       label: "Sealed",
       count: summary?.sealedProducts ?? 0,
     },
+    { key: "sold", label: "Sold", count: soldCount },
   ];
 
   return (
@@ -2264,6 +2291,37 @@ export default function InventoryPage() {
             setShowAddModal(false);
             setEditItem(null);
             load();
+          }}
+        />
+      )}
+      {soldModalItem && (
+        <SoldModal
+          item={
+            {
+              id: soldModalItem.id,
+              name:
+                soldModalItem.card?.name ??
+                soldModalItem.product?.name ??
+                "Unknown",
+              setName: soldModalItem.card?.sets?.name ?? null,
+              imageSmall:
+                soldModalItem.card?.image_small ??
+                soldModalItem.product?.image_url ??
+                null,
+              purchasePrice: soldModalItem.purchase_price,
+              quantity: soldModalItem.quantity,
+              detail:
+                soldModalItem.item_type === "graded_card" &&
+                soldModalItem.grading_company
+                  ? `${soldModalItem.grading_company} ${soldModalItem.grade ?? ""}`.trim()
+                  : null,
+            } as SoldModalItem
+          }
+          onClose={() => setSoldModalItem(null)}
+          onSold={() => {
+            setSoldModalItem(null);
+            load(); // item leaves active inventory; badge + summary refresh
+            setFilterTab("sold");
           }}
         />
       )}
@@ -2673,7 +2731,7 @@ export default function InventoryPage() {
         )}
 
         {/* Empty state */}
-        {!loading && filtered.length === 0 && (
+        {!loading && filterTab !== "sold" && filtered.length === 0 && (
           <div style={{ textAlign: "center", padding: "80px 24px" }}>
             <div
               style={{
@@ -2730,8 +2788,13 @@ export default function InventoryPage() {
           </div>
         )}
 
+        {/* Sold view */}
+        {!loading && filterTab === "sold" && (
+          <SoldView onChanged={() => load()} />
+        )}
+
         {/* Grid */}
-        {!loading && filtered.length > 0 && (
+        {!loading && filterTab !== "sold" && filtered.length > 0 && (
           <div
             style={{
               display: "grid",
@@ -2746,6 +2809,7 @@ export default function InventoryPage() {
                 onEdit={setEditItem}
                 onDelete={(id) => setDeleteConfirm(id)}
                 onOpen={setOpenItem}
+                onMarkSold={setSoldModalItem}
                 selected={selectedIds.has(item.id)}
                 onSelect={toggleSelect}
               />
