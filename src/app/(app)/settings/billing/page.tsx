@@ -26,7 +26,7 @@ const PLAN_DISPLAY: Record<
   },
   collector: {
     name: "Collector",
-    price: "$14.99/mo",
+    price: "$9.99/mo",
     perks: [
       "100 AI grading reports/mo",
       "4 submissions/mo",
@@ -36,7 +36,7 @@ const PLAN_DISPLAY: Record<
   },
   pro: {
     name: "Pro",
-    price: "$29.99/mo",
+    price: "$24.99/mo",
     perks: [
       "Unlimited AI grading",
       "Unlimited submissions",
@@ -355,7 +355,7 @@ export default function BillingSettingsPage() {
                       fontFamily: "inherit",
                     }}
                   >
-                    Upgrade to Collector — $14.99/mo
+                    Upgrade to Collector — $9.99/mo
                   </button>
                 )}
                 <button
@@ -372,7 +372,7 @@ export default function BillingSettingsPage() {
                     fontFamily: "inherit",
                   }}
                 >
-                  Upgrade to Pro — $29.99/mo
+                  Upgrade to Pro — $24.99/mo
                 </button>
               </div>
             </div>
