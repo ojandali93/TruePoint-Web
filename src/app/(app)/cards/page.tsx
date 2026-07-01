@@ -16,7 +16,7 @@ import Image from "next/image";
 
 import { useSets, type PokemonSet } from "../../../hooks/useBrowse";
 import {
-  classifySeries,
+  classifySeriesForSet,
   getSetLanguage,
   groupSetsBySeries,
   isMajorSet,
@@ -346,7 +346,7 @@ function SeriesSection({
 
 function SetTile({ set, onClick }: { set: PokemonSet; onClick: () => void }) {
   // Show derived-series label as a tiny accent above the name
-  const seriesLabel = classifySeries(set.name);
+  const seriesLabel = classifySeriesForSet(set);
 
   return (
     <button

@@ -11,6 +11,9 @@ import { type PokemonSet } from "../hooks/useBrowse";
 
 // ── Series identifiers ──
 export const SERIES = {
+  // One Piece (its own game — browse is game-filtered before grouping)
+  ONE_PIECE: "One Piece",
+  // Pokémon eras
   MEGA: "Mega Evolution",
   SV: "Scarlet & Violet",
   SWSH: "Sword & Shield",
@@ -31,6 +34,7 @@ export type SeriesName = (typeof SERIES)[keyof typeof SERIES];
  * Anything classified as a series not listed here falls right before OTHER.
  */
 export const SERIES_ORDER: SeriesName[] = [
+  SERIES.ONE_PIECE,
   SERIES.MEGA,
   SERIES.SV,
   SERIES.SWSH,
@@ -90,6 +94,21 @@ export function classifySeries(name: string): SeriesName {
 }
 
 /**
+ * Game-aware series classification. The browse view is filtered to a single
+ * game before grouping, so any non-Pokémon game gets its own top-level series
+ * (rather than falling through the Pokémon name heuristics into "Other").
+ * One Piece sets bucket under SERIES.ONE_PIECE; the major/minor "Show more"
+ * collapse inside the group still works via isMajorSet (starter decks, promos,
+ * and premium/extra boosters match the minor pattern and collapse).
+ */
+export function classifySeriesForSet(
+  set: Pick<PokemonSet, "name" | "game">,
+): SeriesName {
+  if (set.game === "onepiece") return SERIES.ONE_PIECE;
+  return classifySeries(set.name);
+}
+
+/**
  * For POP Series, sort by the series NUMBER (1→9) rather than release date,
  * since they all share a backfilled date.
  */
@@ -114,7 +133,7 @@ export interface GroupedSets {
 export function groupSetsBySeries(sets: PokemonSet[]): GroupedSets[] {
   const buckets = new Map<SeriesName, PokemonSet[]>();
   for (const set of sets) {
-    const series = classifySeries(set.name);
+    const series = classifySeriesForSet(set);
     if (!buckets.has(series)) buckets.set(series, []);
     buckets.get(series)!.push(set);
   }
