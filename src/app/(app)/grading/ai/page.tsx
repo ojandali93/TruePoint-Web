@@ -3,6 +3,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import api from "../../../../lib/api";
 import { usePlan } from "@/context/PlanContext";
+import {
+  AIObjectiveReport,
+  AIPredictions,
+  RecordActualGrade,
+} from "@/components/AIDeepReport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -814,6 +819,21 @@ function ReportModal({
               </div>
             </div>
           </div>
+
+          {/* Deep objective analysis — dings, corners, edges, surface, centering, dimensions */}
+          <AIObjectiveReport report={(report as any).report} />
+
+          {/* Predicted grades — grade + likely range + limiting factor + confidence */}
+          <AIPredictions predictions={report.predictions} />
+
+          {/* Phase-4 — record the real grade once the card comes back */}
+          <RecordActualGrade
+            reportId={report.id}
+            existing={{
+              company: (report as any).actual_company,
+              grade: (report as any).actual_grade,
+            }}
+          />
 
           {/* Issues + Strengths */}
           {((report.issues?.length ?? 0) > 0 ||
