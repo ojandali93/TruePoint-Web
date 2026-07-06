@@ -17,7 +17,7 @@ import { createClient } from "../../../lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = "profile" | "collector" | "billing" | "confirm";
+type Step = "profile" | "plan" | "billing" | "confirm";
 
 const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "TAG", "SGC"] as const;
 
@@ -90,20 +90,10 @@ const profileSchema = z.object({
     .regex(/^[a-zA-Z0-9_]+$/, "Letters, numbers, and underscores only"),
   currency: z.string(),
   preferred_grading_company: z.string(),
+  collecting_years: z.string().optional(),
 });
 
 type ProfileData = z.infer<typeof profileSchema>;
-
-// Step 2 — collector profile questions
-const collectorSchema = z.object({
-  favorite_pokemon: z.string().max(100).optional().or(z.literal("")),
-  favorite_set: z.string().max(100).optional().or(z.literal("")),
-  collecting_years: z.string().optional(),
-  collection_type: z.enum(["sealed", "unsealed", "both"]),
-  collector_style: z.enum(["grading", "singles", "both"]),
-});
-
-type CollectorData = z.infer<typeof collectorSchema>;
 
 // ─── Shared components ────────────────────────────────────────────────────────
 
@@ -111,7 +101,7 @@ function StepIndicator({ current, plan }: { current: Step; plan: PlanKey }) {
   const isPaid = plan !== "starter";
   const steps: { key: Step; label: string }[] = [
     { key: "profile", label: "Profile" },
-    { key: "collector", label: "Collection" },
+    { key: "plan", label: "Plan" },
     ...(isPaid ? [{ key: "billing" as Step, label: "Payment" }] : []),
     { key: "confirm", label: "Confirm" },
   ];
@@ -344,7 +334,11 @@ function ProfileStep({ onNext }: { onNext: (data: ProfileData) => void }) {
     formState: { errors, isSubmitting },
   } = useForm<ProfileData>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { currency: "USD", preferred_grading_company: "PSA" },
+    defaultValues: {
+      currency: "USD",
+      preferred_grading_company: "PSA",
+      collecting_years: "",
+    },
   });
 
   const [serverError, setServerError] = useState<string | null>(null);
@@ -365,6 +359,7 @@ function ProfileStep({ onNext }: { onNext: (data: ProfileData) => void }) {
         full_name: fullName, // ← pull from auth metadata
         currency: data.currency,
         preferred_grading_company: data.preferred_grading_company,
+        collecting_years: data.collecting_years || null,
       });
 
       try {
@@ -423,6 +418,14 @@ function ProfileStep({ onNext }: { onNext: (data: ProfileData) => void }) {
         hint='Public — letters, numbers, and underscores only'
         autoComplete='username'
         {...register("username")}
+      />
+
+      <Input
+        label='Years collecting'
+        placeholder='e.g. 5'
+        inputMode='numeric'
+        error={errors.collecting_years?.message}
+        {...register("collecting_years")}
       />
 
       {/* Currency */}
@@ -526,169 +529,6 @@ function ProfileStep({ onNext }: { onNext: (data: ProfileData) => void }) {
       >
         Continue
       </Button>
-    </form>
-  );
-}
-
-// ─── Step 2: Collector profile ────────────────────────────────────────────────
-
-function CollectorStep({
-  onNext,
-  onBack,
-}: {
-  onNext: (data: CollectorData) => void;
-  onBack: () => void;
-}) {
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { isSubmitting },
-  } = useForm<CollectorData>({
-    resolver: zodResolver(collectorSchema),
-    defaultValues: {
-      collection_type: "both",
-      collector_style: "both",
-      collecting_years: "",
-    },
-  });
-
-  const [serverError, setServerError] = useState<string | null>(null);
-  const collectionType = watch("collection_type");
-  const collectorStyle = watch("collector_style");
-  const collectingYears = watch("collecting_years");
-
-  const onSubmit = async (data: CollectorData) => {
-    setServerError(null);
-    try {
-      await api.put("/users/me", {
-        favorite_pokemon: data.favorite_pokemon || null,
-        favorite_set: data.favorite_set || null,
-        collecting_years: data.collecting_years || null,
-        collection_type: data.collection_type,
-        collector_style: data.collector_style,
-      });
-      onNext(data);
-    } catch (err: unknown) {
-      setServerError(
-        err instanceof Error
-          ? err.message
-          : "Failed to save preferences. Please try again.",
-      );
-    }
-  };
-
-  return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      style={{ display: "flex", flexDirection: "column", gap: 22 }}
-    >
-      <div>
-        <h2
-          style={{
-            fontSize: 20,
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            marginBottom: 6,
-          }}
-        >
-          Tell us about your collection
-        </h2>
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--text-secondary)",
-            lineHeight: 1.6,
-          }}
-        >
-          This helps us personalize your Reverse Holo experience. All fields are
-          optional.
-        </p>
-      </div>
-
-      {serverError && <ErrorBanner message={serverError} />}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Input
-          label='Favorite Pokémon'
-          placeholder='Charizard'
-          hint='Optional'
-          {...register("favorite_pokemon")}
-        />
-        <Input
-          label='Favorite set'
-          placeholder='Base Set, Obsidian Flames...'
-          hint='Optional'
-          {...register("favorite_set")}
-        />
-      </div>
-
-      <ToggleGroup
-        label='How long have you been collecting?'
-        options={COLLECTING_YEARS.map((y) => ({
-          value: y.value,
-          label: y.label,
-        }))}
-        value={collectingYears ?? ""}
-        onChange={(val) => setValue("collecting_years", val)}
-      />
-
-      <ToggleGroup
-        label='Do you primarily collect sealed or unsealed?'
-        hint='This helps us show the most relevant inventory features first.'
-        options={[
-          { value: "sealed", label: "Sealed" },
-          { value: "unsealed", label: "Unsealed" },
-          { value: "both", label: "Both" },
-        ]}
-        value={collectionType}
-        onChange={(val) =>
-          setValue("collection_type", val as CollectorData["collection_type"])
-        }
-      />
-
-      <ToggleGroup
-        label='Do you prefer grading cards or working with singles?'
-        hint='Used to prioritize features in your dashboard.'
-        options={[
-          { value: "grading", label: "Grading" },
-          { value: "singles", label: "Singles" },
-          { value: "both", label: "Both" },
-        ]}
-        value={collectorStyle}
-        onChange={(val) =>
-          setValue("collector_style", val as CollectorData["collector_style"])
-        }
-      />
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          marginTop: 8,
-        }}
-      >
-        <Button
-          type='submit'
-          variant='primary'
-          size='lg'
-          fullWidth
-          loading={isSubmitting}
-        >
-          Continue
-        </Button>
-        <Button
-          type='button'
-          variant='ghost'
-          size='md'
-          fullWidth
-          onClick={onBack}
-        >
-          ← Back
-        </Button>
-      </div>
     </form>
   );
 }
@@ -999,15 +839,212 @@ function ConfirmStep({
 
 // ─── Main flow ────────────────────────────────────────────────────────────────
 
+// ─── Step 2: Plan selection (the single paywall — matches mobile) ──────────────
+
+function PlanStep({
+  initialPlan,
+  onSelect,
+  onBack,
+}: {
+  initialPlan: PlanKey;
+  onSelect: (plan: PlanKey) => void;
+  onBack: () => void;
+}) {
+  const [selected, setSelected] = useState<PlanKey>(
+    initialPlan === "starter" ? "collector" : initialPlan,
+  );
+  const paid: PlanKey[] = ["collector", "pro"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2
+          style={{
+            fontSize: 20,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 6,
+          }}
+        >
+          Choose your plan
+        </h2>
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--text-secondary)",
+            lineHeight: 1.6,
+          }}
+        >
+          Start with a 7-day free trial. Cancel anytime.
+        </p>
+      </div>
+
+      {paid.map((key) => {
+        const meta = PLAN_META[key];
+        const isSel = selected === key;
+        return (
+          <button
+            key={key}
+            type='button'
+            onClick={() => setSelected(key)}
+            style={{
+              textAlign: "left",
+              background: isSel ? "rgba(201,168,76,0.08)" : "var(--surface-2)",
+              border: `${isSel ? 2 : 1}px solid ${isSel ? "var(--gold)" : "var(--border)"}`,
+              borderRadius: 12,
+              padding: 20,
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              fontFamily: "inherit",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    border: `2px solid ${isSel ? "var(--gold)" : "var(--border)"}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  {isSel && (
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 5,
+                        background: "var(--gold)",
+                      }}
+                    />
+                  )}
+                </span>
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 600,
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  {meta.name}
+                </span>
+                {key === "collector" && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      color: "#0E0E12",
+                      background: "var(--gold)",
+                      borderRadius: 5,
+                      padding: "2px 6px",
+                    }}
+                  >
+                    MOST POPULAR
+                  </span>
+                )}
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: isSel ? "var(--gold)" : "var(--text-primary)",
+                  }}
+                >
+                  {meta.price}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#3DAA6E",
+                    fontWeight: 600,
+                  }}
+                >
+                  7-day free trial
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {meta.features.map((f) => (
+                <div
+                  key={f}
+                  style={{ fontSize: 12, color: "var(--text-secondary)" }}
+                >
+                  • {f}
+                </div>
+              ))}
+            </div>
+          </button>
+        );
+      })}
+
+      <Button
+        type='button'
+        variant='primary'
+        size='lg'
+        fullWidth
+        onClick={() => onSelect(selected)}
+        style={{ marginTop: 4 }}
+      >
+        Start 7-day free trial
+      </Button>
+
+      <button
+        type='button'
+        onClick={() => onSelect("starter")}
+        style={{
+          background: "none",
+          border: "none",
+          color: "var(--text-secondary)",
+          fontSize: 13,
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        Continue with Starter (free)
+      </button>
+
+      <button
+        type='button'
+        onClick={onBack}
+        style={{
+          background: "none",
+          border: "none",
+          color: "var(--text-dim)",
+          fontSize: 12,
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        &larr; Back
+      </button>
+    </div>
+  );
+}
+
 function OnboardingFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const planParam = (searchParams.get("plan") ?? "starter") as PlanKey;
-  const plan = PLAN_META[planParam] ? planParam : "starter";
-  const isPaid = plan !== "starter";
+  const planParam = (searchParams.get("plan") ?? "collector") as PlanKey;
+  const initialPlan: PlanKey = PLAN_META[planParam] ? planParam : "collector";
 
   const [step, setStep] = useState<Step>("profile");
+  const [plan, setPlan] = useState<PlanKey>(initialPlan);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const isPaid = plan !== "starter";
 
   useEffect(() => {
     const sessionId = searchParams.get("session_id");
@@ -1015,36 +1052,33 @@ function OnboardingFlow() {
       api
         .post("/billing/verify-session", { sessionId })
         .then(async () => {
-          // Send verification email NOW (after Stripe completes for paid plans,
-          // or immediately after profile for Starter)
           try {
             await api.post("/auth/send-verification-email", {});
           } catch (err) {
             console.error("Failed to send verification email:", err);
           }
-          router.push("/verify-email"); // ← was ROUTES.DASHBOARD
+          router.push("/verify-email");
         })
         .catch((err) => {
           console.error("Session verify failed:", err);
-          router.push("/verify-email"); // ← was ROUTES.DASHBOARD
+          router.push("/verify-email");
         });
     }
   }, [searchParams, router]);
 
   const handleProfileNext = (data: ProfileData) => {
     setProfileData(data);
-    setStep("collector");
+    setStep("plan");
   };
 
-  const handleCollectorNext = () => {
-    setStep(isPaid ? "billing" : "confirm");
+  const handlePlanSelect = (chosen: PlanKey) => {
+    setPlan(chosen);
+    setStep(chosen !== "starter" ? "billing" : "confirm");
   };
 
   const handleBillingNext = () => setStep("confirm");
+
   const handleFinish = async () => {
-    // For Starter (no Stripe step), trigger the verification email here.
-    // For paid plans, this is also called as a fallback in case the user
-    // skipped the Stripe return flow and got to the confirm step directly.
     try {
       await api.post("/auth/send-verification-email", {});
     } catch (err) {
@@ -1056,7 +1090,9 @@ function OnboardingFlow() {
   return (
     <div>
       <StepIndicator current={step} plan={plan} />
-      <PlanSummaryCard plan={plan} />
+      {(step === "billing" || step === "confirm") && (
+        <PlanSummaryCard plan={plan} />
+      )}
 
       <div
         style={{
@@ -1067,9 +1103,10 @@ function OnboardingFlow() {
         }}
       >
         {step === "profile" && <ProfileStep onNext={handleProfileNext} />}
-        {step === "collector" && (
-          <CollectorStep
-            onNext={handleCollectorNext}
+        {step === "plan" && (
+          <PlanStep
+            initialPlan={initialPlan}
+            onSelect={handlePlanSelect}
             onBack={() => setStep("profile")}
           />
         )}
@@ -1077,7 +1114,7 @@ function OnboardingFlow() {
           <BillingStep
             plan={plan}
             onNext={handleBillingNext}
-            onBack={() => setStep("collector")}
+            onBack={() => setStep("plan")}
           />
         )}
         {step === "confirm" && (

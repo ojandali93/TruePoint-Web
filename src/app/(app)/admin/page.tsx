@@ -669,6 +669,7 @@ function PlatformUsers() {
   const [detailUser, setDetailUser] = useState<UserRow | null>(null);
   const [newPlan, setNewPlan] = useState<"collector" | "pro">("collector");
   const [planNote, setPlanNote] = useState("");
+  const [durationMonths, setDurationMonths] = useState<number | null>(3);
   const [saving, setSaving] = useState(false);
   const [resend, setResend] = useState<
     Record<string, "sending" | "sent" | "verified" | "error">
@@ -706,9 +707,11 @@ function PlatformUsers() {
       await api.patch(`/admin/users/${planModal.id}/plan`, {
         plan: newPlan,
         note: planNote,
+        durationMonths,
       });
       setPlanModal(null);
       setPlanNote("");
+      setDurationMonths(3);
       load(search);
     } finally {
       setSaving(false);
@@ -1051,6 +1054,63 @@ function PlatformUsers() {
                     {p}
                   </button>
                 ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                  marginBottom: 6,
+                }}
+              >
+                DURATION
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {(
+                  [
+                    { label: "Indefinite", v: null },
+                    { label: "1 mo", v: 1 },
+                    { label: "3 mo", v: 3 },
+                    { label: "6 mo", v: 6 },
+                    { label: "12 mo", v: 12 },
+                  ] as { label: string; v: number | null }[]
+                ).map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setDurationMonths(opt.v)}
+                    style={{
+                      flex: "1 0 auto",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${durationMonths === opt.v ? "var(--gold)" : "var(--border)"}`,
+                      background:
+                        durationMonths === opt.v
+                          ? "rgba(201,168,76,0.1)"
+                          : "transparent",
+                      color:
+                        durationMonths === opt.v
+                          ? "var(--gold)"
+                          : "var(--text-secondary)",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--text-dim)",
+                  marginTop: 6,
+                }}
+              >
+                {durationMonths
+                  ? `Comp trial — expires in ${durationMonths} month${durationMonths > 1 ? "s" : ""} (status: trialing).`
+                  : "Indefinite comp grant (status: active)."}
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
