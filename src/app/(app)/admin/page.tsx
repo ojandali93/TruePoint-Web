@@ -1194,9 +1194,11 @@ function ErrorLogs() {
   const [resolving, setResolving] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<Record<string, number> | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const p = new URLSearchParams({ limit: "50", resolved });
       if (severity) p.set("severity", severity);
@@ -1209,6 +1211,17 @@ function ErrorLogs() {
       setLogs(lr.data.data.logs);
       setTotal(lr.data.data.total);
       setSummary(sr.data.data);
+    } catch (err: any) {
+      // Previously this had no catch — a failing request left the tab silently
+      // empty with no clue why. Surface it instead.
+      console.error("[Admin] error logs failed to load:", err);
+      setLoadError(
+        err?.response?.data?.error ??
+          err?.message ??
+          "Failed to load error logs.",
+      );
+      setLogs([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -1233,6 +1246,21 @@ function ErrorLogs() {
 
   return (
     <div>
+      {loadError && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 14px",
+            borderRadius: 8,
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            color: "#EF4444",
+            fontSize: 13,
+          }}
+        >
+          {loadError}
+        </div>
+      )}
       {summary && (
         <div
           style={{
