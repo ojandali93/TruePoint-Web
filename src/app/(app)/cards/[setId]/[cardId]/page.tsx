@@ -34,6 +34,7 @@ import {
   variantColor,
 } from "../../../../../lib/variants";
 import RawPriceHistoryChart from "../../../../../components/cards/RawPriceHistoryChart";
+import RecentSalesSection from "../../../../../components/cards/RecentSalesSection";
 import QuickAddInventory from "../../../../../components/cards/QuickAddInventory";
 import type { QuickAddVariant } from "../../../../../components/cards/QuickAddInventory";
 import QuickAddGradedInventory from "../../../../../components/cards/QuickAddGradedInventory";
@@ -301,6 +302,7 @@ export default function CardDetailPage({
           <div style={{ marginBottom: 24 }}>
             <RawPriceHistoryChart cardId={cardId} />
           </div>
+          <RecentSalesSection cardId={cardId} />
           <RawPricesPanel prices={allPrices} />
           <GradedPricesPanel gradedPrices={gradedPrices} />
         </>
