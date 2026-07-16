@@ -21,6 +21,7 @@
 import { useMemo, useState } from "react";
 import {
   CartesianGrid,
+  ReferenceLine,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -151,6 +152,23 @@ export default function RawPriceHistoryChart({ cardId, height = 240 }: Props) {
     [series],
   );
 
+  // Horizontal reference price levels (labeled gridlines).
+  const priceLevels = useMemo(() => {
+    let lo = Infinity,
+      hi = -Infinity;
+    for (const r of rows) {
+      for (const v of variantsWithData) {
+        const p = (r as Record<string, number | string | null>)[v];
+        if (typeof p === "number") {
+          if (p < lo) lo = p;
+          if (p > hi) hi = p;
+        }
+      }
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return [];
+    return niceTicks(lo, hi, 4);
+  }, [rows, variantsWithData]);
+
   const isEmpty = !loading && !error && rows.length < 2;
 
   return (
@@ -257,6 +275,24 @@ export default function RawPriceHistoryChart({ cardId, height = 240 }: Props) {
                 stroke='var(--border)'
                 opacity={0.4}
               />
+              {priceLevels.map((lvl) => (
+                <ReferenceLine
+                  key={lvl}
+                  y={lvl}
+                  stroke='var(--border)'
+                  strokeDasharray='3 4'
+                  ifOverflow='extendDomain'
+                  label={{
+                    value:
+                      lvl >= 1000
+                        ? `$${(lvl / 1000).toFixed(1)}k`
+                        : `$${lvl >= 100 ? Math.round(lvl) : lvl.toFixed(2)}`,
+                    position: "right",
+                    fill: "var(--text-dim)",
+                    fontSize: 10,
+                  }}
+                />
+              ))}
               <XAxis
                 dataKey='date'
                 tickFormatter={fmtShortDate}
@@ -367,4 +403,17 @@ function Center({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+function niceTicks(lo: number, hi: number, count = 4): number[] {
+  if (!(hi > lo)) return [lo];
+  const rawStep = (hi - lo) / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep / mag;
+  const step = (norm >= 5 ? 5 : norm >= 2 ? 2 : norm >= 1 ? 1 : 0.5) * mag;
+  const start = Math.ceil(lo / step) * step;
+  const ticks: number[] = [];
+  for (let v = start; v <= hi + 1e-9; v += step)
+    ticks.push(Math.round(v * 100) / 100);
+  return ticks;
 }
