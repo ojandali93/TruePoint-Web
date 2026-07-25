@@ -7,6 +7,7 @@ import api from "../../../lib/api";
 import { ROUTES } from "../../../constants/routes";
 import { useCollections } from "../../../context/CollectionContext";
 import PortfolioValueHero from "@/components/dashboard/PortfolioValueHero";
+import DebugCanaryBanner from "@/components/dev/DebugCanaryBanner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -476,6 +477,8 @@ export default function DashboardPage() {
           Here&apos;s your collection at a glance.
         </p>
       </div>
+
+      <DebugCanaryBanner />
 
       {/* ── Collection switcher — shown when user has multiple collections ── */}
       {hasMultipleCollections && (

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import api from "../../../lib/api";
 import SyncPanel from "@/components/admin/SyncPanel";
@@ -87,12 +88,23 @@ interface UserRow {
   subscription?: { plan: string; status: string }[];
 }
 
+type FlagAudience = "off" | "allowlist" | "admins" | "percentage" | "everyone";
+
 interface FeatureFlag {
   id: string;
   key: string;
   enabled: boolean;
+  audience: FlagAudience;
+  allowed_user_ids: string[];
+  rollout_percentage: number;
   description?: string;
   updated_at: string;
+}
+
+interface FlagUserResult {
+  id: string;
+  username?: string;
+  full_name?: string;
 }
 
 interface GradingCost {
@@ -1713,26 +1725,76 @@ function ActivityLogs() {
 }
 
 // ─── Feature Flags ────────────────────────────────────────────────────────────
+//
+// Resolution precedence (mirrors featureFlag.service.ts on the backend):
+//   1. enabled=false            → off for everyone, no matter what
+//   2. user in allowed_user_ids → on, regardless of audience (additive)
+//   3. audience rules apply
+
+const AUDIENCE_LABEL: Record<FlagAudience, string> = {
+  off: "Off",
+  allowlist: "Allowlist",
+  admins: "Admins",
+  percentage: "Percentage",
+  everyone: "Everyone",
+};
+
+const ALL_AUDIENCES: FlagAudience[] = [
+  "off",
+  "allowlist",
+  "admins",
+  "percentage",
+  "everyone",
+];
+
+function flagStatusText(f: FeatureFlag): string {
+  if (!f.enabled) return "Off — killed";
+  switch (f.audience) {
+    case "off":
+      return "On — nobody targeted";
+    case "allowlist":
+      return `On — ${f.allowed_user_ids.length} user${f.allowed_user_ids.length === 1 ? "" : "s"}`;
+    case "admins":
+      return "On — admins only";
+    case "percentage":
+      return `On — ${f.rollout_percentage}% rollout`;
+    case "everyone":
+      return "On — everyone";
+    default:
+      return "On";
+  }
+}
+
+function flagStatusColor(f: FeatureFlag): string {
+  if (!f.enabled || f.audience === "off") return "var(--text-dim)";
+  if (f.audience === "everyone") return "#10B981";
+  return "var(--gold)";
+}
 
 function FeatureFlags() {
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [editing, setEditing] = useState<FeatureFlag | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
+  const load = () =>
     api
       .get<{ data: FeatureFlag[] }>("/admin/flags")
-      .then((r) => setFlags(r.data.data))
-      .finally(() => setLoading(false));
+      .then((r) => setFlags(r.data.data ?? []));
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
   }, []);
 
+  // Master kill switch only — the fast path, doesn't need the full editor.
   const toggle = async (key: string, cur: boolean) => {
     setToggling(key);
     try {
-      await api.patch(`/admin/flags/${key}`, { enabled: !cur });
-      setFlags((prev) =>
-        prev.map((f) => (f.key === key ? { ...f, enabled: !cur } : f)),
-      );
+      const r = await api.patch<{ data: FeatureFlag }>(`/admin/flags/${key}`, {
+        enabled: !cur,
+      });
+      setFlags((prev) => prev.map((f) => (f.key === key ? r.data.data : f)));
     } finally {
       setToggling(null);
     }
@@ -1750,78 +1812,751 @@ function FeatureFlags() {
           marginBottom: 16,
           fontSize: 12,
           color: "var(--text-secondary)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
         }}
       >
-        Changes take effect immediately on the next API request — no deploy
-        needed.
+        <span>
+          Changes take effect immediately on the next API request — no deploy
+          needed. The master switch must be ON for audience targeting below it
+          to matter.
+        </span>
+        <button
+          onClick={() => setCreating(true)}
+          style={{
+            flexShrink: 0,
+            padding: "8px 14px",
+            borderRadius: 8,
+            border: "none",
+            background: "var(--gold)",
+            color: "var(--charcoal, #0E0E12)",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          + New Flag
+        </button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {flags.map((flag) => (
-          <div
-            key={flag.id}
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              padding: "14px 18px",
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-            }}
-          >
-            <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "var(--text-primary)",
-                  marginBottom: 2,
-                  fontFamily: "DM Mono, monospace",
-                }}
-              >
-                {flag.key}
-              </div>
-              {flag.description && (
-                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                  {flag.description}
-                </div>
-              )}
-            </div>
-            <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-              {new Date(flag.updated_at).toLocaleDateString()}
-            </span>
-            <button
-              onClick={() => toggle(flag.key, flag.enabled)}
-              disabled={toggling === flag.key}
+
+      {flags.length === 0 ? (
+        <div
+          style={{
+            padding: "40px 0",
+            textAlign: "center",
+            color: "var(--text-dim)",
+            fontSize: 13,
+          }}
+        >
+          No feature flags yet. Create one to get started.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {flags.map((flag) => (
+            <div
+              key={flag.id}
               style={{
-                width: 44,
-                height: 24,
-                borderRadius: 12,
-                border: "none",
-                cursor: "pointer",
-                background: flag.enabled ? "#10B981" : "var(--surface-3)",
-                position: "relative",
-                transition: "background 0.2s",
-                flexShrink: 0,
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: "14px 18px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
               }}
             >
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: "var(--text-primary)",
+                      marginBottom: 2,
+                      fontFamily: "DM Mono, monospace",
+                    }}
+                  >
+                    {flag.key}
+                  </div>
+                  {flag.description && (
+                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                      {flag.description}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setEditing(flag)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "transparent",
+                    color: "var(--text-secondary)",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    flexShrink: 0,
+                  }}
+                >
+                  Configure
+                </button>
+                <button
+                  onClick={() => toggle(flag.key, flag.enabled)}
+                  disabled={toggling === flag.key}
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    border: "none",
+                    cursor: "pointer",
+                    background: flag.enabled ? "#10B981" : "var(--surface-3)",
+                    position: "relative",
+                    transition: "background 0.2s",
+                    flexShrink: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      left: flag.enabled ? 22 : 3,
+                      width: 18,
+                      height: 18,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      transition: "left 0.2s",
+                    }}
+                  />
+                </button>
+              </div>
+
               <div
                 style={{
-                  position: "absolute",
-                  top: 3,
-                  left: flag.enabled ? 22 : 3,
-                  width: 18,
-                  height: 18,
-                  borderRadius: "50%",
-                  background: "#fff",
-                  transition: "left 0.2s",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  paddingTop: 8,
+                  borderTop: "1px solid var(--border)",
                 }}
-              />
-            </button>
-          </div>
-        ))}
+              >
+                <div
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    background: flagStatusColor(flag),
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: flagStatusColor(flag),
+                  }}
+                >
+                  {flagStatusText(flag)}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                    marginLeft: "auto",
+                  }}
+                >
+                  {new Date(flag.updated_at).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <FlagEditorOverlay
+          flag={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => {
+            setFlags((prev) =>
+              prev.map((f) => (f.key === updated.key ? updated : f)),
+            );
+            setEditing(null);
+          }}
+          onDeleted={(key) => {
+            setFlags((prev) => prev.filter((f) => f.key !== key));
+            setEditing(null);
+          }}
+        />
+      )}
+
+      {creating && (
+        <CreateFlagOverlay
+          onClose={() => setCreating(false)}
+          onCreated={(created) => {
+            setFlags((prev) =>
+              [...prev, created].sort((a, b) => a.key.localeCompare(b.key)),
+            );
+            setCreating(false);
+            setEditing(created); // straight into configuring the audience
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Shared overlay chrome ──────────────────────────────────────────────────
+
+function FlagOverlayShell({
+  onClose,
+  children,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          padding: 24,
+          width: 420,
+          maxHeight: "85vh",
+          overflowY: "auto",
+        }}
+      >
+        {children}
       </div>
     </div>
+  );
+}
+
+const flagLabelStyle: CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-dim)",
+  marginBottom: 6,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+};
+
+const flagInputStyle: CSSProperties = {
+  width: "100%",
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: "8px 12px",
+  fontSize: 12,
+  color: "var(--text-primary)",
+  fontFamily: "inherit",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+function chipStyle(active: boolean): CSSProperties {
+  return {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: `1px solid ${active ? "var(--gold)" : "var(--border)"}`,
+    background: active ? "rgba(201,168,76,0.1)" : "transparent",
+    color: active ? "var(--gold)" : "var(--text-secondary)",
+    fontSize: 12,
+    fontWeight: active ? 700 : 400,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  };
+}
+
+// ─── Create flag ────────────────────────────────────────────────────────────
+
+function CreateFlagOverlay({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (flag: FeatureFlag) => void;
+}) {
+  const [key, setKey] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    const normalized = key
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "_");
+    if (!normalized || normalized.length < 3) {
+      setErr("Key must be at least 3 characters (letters, numbers, _).");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await api.post<{ data: FeatureFlag }>("/admin/flags", {
+        key: normalized,
+        description: description.trim() || undefined,
+      });
+      onCreated(r.data.data);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to create flag.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <FlagOverlayShell onClose={onClose}>
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 500,
+          color: "var(--text-primary)",
+          marginBottom: 4,
+        }}
+      >
+        New feature flag
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 16 }}>
+        Created dark: killed on, audience off. Nobody sees it until you target
+        an audience.
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={flagLabelStyle}>Key</div>
+        <input
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder='regrade_tracker'
+          autoFocus
+          style={{ ...flagInputStyle, fontFamily: "DM Mono, monospace" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={flagLabelStyle}>Description (optional)</div>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder='What this gates'
+          rows={3}
+          style={{ ...flagInputStyle, resize: "vertical" }}
+        />
+      </div>
+
+      {err && (
+        <div style={{ fontSize: 11, color: "#C94C4C", marginBottom: 12 }}>
+          {err}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={onClose}
+          disabled={saving}
+          style={{
+            flex: 1,
+            padding: "8px 0",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            color: "var(--text-secondary)",
+            fontSize: 12,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={submit}
+          disabled={saving}
+          style={{
+            flex: 1,
+            padding: "8px 0",
+            borderRadius: 8,
+            border: "none",
+            background: "var(--gold)",
+            color: "var(--charcoal, #0E0E12)",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            opacity: saving ? 0.6 : 1,
+          }}
+        >
+          {saving ? "Creating…" : "Create"}
+        </button>
+      </div>
+    </FlagOverlayShell>
+  );
+}
+
+// ─── Edit flag (audience / allowlist / percentage) ─────────────────────────
+
+function FlagEditorOverlay({
+  flag,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  flag: FeatureFlag;
+  onClose: () => void;
+  onSaved: (flag: FeatureFlag) => void;
+  onDeleted: (key: string) => void;
+}) {
+  const [audience, setAudience] = useState<FlagAudience>(flag.audience);
+  const [allowedIds, setAllowedIds] = useState<string[]>(flag.allowed_user_ids);
+  const [allowedLabels, setAllowedLabels] = useState<Record<string, string>>(
+    Object.fromEntries(flag.allowed_user_ids.map((id) => [id, id])),
+  );
+  const [percentage, setPercentage] = useState(String(flag.rollout_percentage));
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [userResults, setUserResults] = useState<FlagUserResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const q = userSearch.trim();
+      setSearching(true);
+      try {
+        const r = await api.get<{
+          data: { users: FlagUserResult[]; total: number };
+        }>(`/admin/users?search=${encodeURIComponent(q)}&limit=20`);
+        setUserResults(r.data.data.users ?? []);
+      } catch {
+        setUserResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [userSearch]);
+
+  const addUser = (u: FlagUserResult) => {
+    setAllowedIds((prev) => (prev.includes(u.id) ? prev : [...prev, u.id]));
+    setAllowedLabels((prev) => ({
+      ...prev,
+      [u.id]: u.full_name ?? u.username ?? u.id,
+    }));
+  };
+
+  const save = async () => {
+    const pct = Math.max(0, Math.min(100, Number(percentage) || 0));
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await api.patch<{ data: FeatureFlag }>(
+        `/admin/flags/${flag.key}`,
+        {
+          audience,
+          allowed_user_ids: allowedIds,
+          rollout_percentage: pct,
+        },
+      );
+      onSaved(r.data.data);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.delete(`/admin/flags/${flag.key}`);
+      onDeleted(flag.key);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to delete.");
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <FlagOverlayShell onClose={onClose}>
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 500,
+          color: "var(--text-primary)",
+          fontFamily: "DM Mono, monospace",
+          marginBottom: 2,
+        }}
+      >
+        {flag.key}
+      </div>
+      {flag.description && (
+        <div
+          style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 12 }}
+        >
+          {flag.description}
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 16 }}>
+        The master switch (list view) must be ON for any of this to take effect.
+        Allowlisted users always see the feature, regardless of audience below.
+      </div>
+
+      {/* Audience picker */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={flagLabelStyle}>Audience</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {ALL_AUDIENCES.map((a) => (
+            <button
+              key={a}
+              onClick={() => setAudience(a)}
+              style={chipStyle(audience === a)}
+            >
+              {AUDIENCE_LABEL[a]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Percentage */}
+      {audience === "percentage" && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={flagLabelStyle}>Rollout percentage</div>
+          <input
+            value={percentage}
+            onChange={(e) =>
+              setPercentage(e.target.value.replace(/[^0-9]/g, ""))
+            }
+            placeholder='0–100'
+            style={flagInputStyle}
+          />
+          <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 6 }}>
+            Stable per user — the same person always lands on the same side of
+            the split.
+          </div>
+        </div>
+      )}
+
+      {/* Allowlist — additive to every audience, so always shown */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={flagLabelStyle}>Allowlist ({allowedIds.length})</div>
+
+        {allowedIds.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              marginBottom: 10,
+            }}
+          >
+            {allowedIds.map((id) => (
+              <div
+                key={id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "var(--surface-2)",
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                }}
+              >
+                <span
+                  style={{
+                    flex: 1,
+                    fontSize: 11,
+                    color: "var(--text-primary)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {allowedLabels[id] ?? id}
+                </span>
+                <button
+                  onClick={() =>
+                    setAllowedIds((prev) => prev.filter((x) => x !== id))
+                  }
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "#C94C4C",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <input
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          placeholder='Search name or username to add… (this is where your tester account goes)'
+          style={flagInputStyle}
+        />
+        {userSearch.trim() && (
+          <div
+            style={{
+              marginTop: 6,
+              maxHeight: 160,
+              overflowY: "auto",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+            }}
+          >
+            {searching ? (
+              <div
+                style={{
+                  padding: 10,
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                }}
+              >
+                Searching…
+              </div>
+            ) : userResults.length === 0 ? (
+              <div
+                style={{
+                  padding: 10,
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                }}
+              >
+                No matches.
+              </div>
+            ) : (
+              userResults.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => {
+                    addUser(u);
+                    setUserSearch("");
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    border: "none",
+                    borderBottom: "1px solid var(--border)",
+                    background: "transparent",
+                    color: "var(--text-primary)",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {u.full_name ?? u.username ?? "Unnamed"}
+                  {u.username && (
+                    <span style={{ color: "var(--text-dim)", marginLeft: 6 }}>
+                      @{u.username}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {err && (
+        <div style={{ fontSize: 11, color: "#C94C4C", marginBottom: 12 }}>
+          {err}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button
+          onClick={onClose}
+          disabled={saving}
+          style={{
+            flex: 1,
+            padding: "8px 0",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            color: "var(--text-secondary)",
+            fontSize: 12,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          Close
+        </button>
+        <button
+          onClick={save}
+          disabled={saving}
+          style={{
+            flex: 1,
+            padding: "8px 0",
+            borderRadius: 8,
+            border: "none",
+            background: "var(--gold)",
+            color: "var(--charcoal, #0E0E12)",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            opacity: saving ? 0.6 : 1,
+          }}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+
+      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+        <button
+          onClick={remove}
+          disabled={deleting}
+          style={{
+            width: "100%",
+            padding: "8px 0",
+            borderRadius: 8,
+            border: "none",
+            background: "#C94C4C",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            opacity: deleting ? 0.6 : 1,
+          }}
+        >
+          {deleting
+            ? "Deleting…"
+            : confirmDelete
+              ? "Tap again to confirm delete"
+              : "Delete flag"}
+        </button>
+      </div>
+    </FlagOverlayShell>
   );
 }
 
