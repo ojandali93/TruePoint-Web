@@ -42,6 +42,13 @@ export interface PlanSnapshot {
   effectivePlan: PlanKey;
   isAdmin: boolean;
   features: Record<FeatureKey, boolean>;
+  /**
+   * Feature-flag rollout state, resolved server-side. Distinct from
+   * `features`: that's entitlement (does your PLAN include this), this is
+   * rollout (has it SHIPPED to you yet). Keys are arbitrary strings, so this
+   * is intentionally not a closed union — flags come and go.
+   */
+  flags: Record<string, boolean>;
   usage: {
     aiGradingReports: UsageInfo;
     submissions: UsageInfo;
@@ -61,6 +68,7 @@ interface PlanContextValue {
   isAdmin: boolean;
   plan: PlanKey;
   features: Record<FeatureKey, boolean>;
+  flags: Record<string, boolean>;
   usage: PlanSnapshot["usage"] | null;
 }
 
@@ -74,6 +82,8 @@ const DEFAULT_FEATURES: Record<FeatureKey, boolean> = {
   ai_grading: false,
 };
 
+const DEFAULT_FLAGS: Record<string, boolean> = {};
+
 const PlanContext = createContext<PlanContextValue>({
   snapshot: null,
   loading: true,
@@ -81,6 +91,7 @@ const PlanContext = createContext<PlanContextValue>({
   isAdmin: false,
   plan: "starter",
   features: DEFAULT_FEATURES,
+  flags: DEFAULT_FLAGS,
   usage: null,
 });
 
@@ -116,6 +127,7 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
         isAdmin: snapshot?.isAdmin ?? false,
         plan: snapshot?.effectivePlan ?? "starter",
         features: snapshot?.features ?? DEFAULT_FEATURES,
+        flags: snapshot?.flags ?? DEFAULT_FLAGS,
         usage: snapshot?.usage ?? null,
       }}
     >
@@ -125,3 +137,20 @@ export const PlanProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const usePlan = () => useContext(PlanContext);
+
+/**
+ * Gate an unreleased feature:
+ *
+ *   if (useFlag("regrade_tracker")) { ... }
+ *
+ * Returns false while the snapshot is loading and false for unknown keys, so
+ * dark features flicker IN rather than out. Never render a gated feature and
+ * then yank it away.
+ *
+ * Not to be confused with usePlan().features — that's subscription
+ * entitlement. This is rollout state.
+ */
+export const useFlag = (key: string): boolean => {
+  const { flags } = useContext(PlanContext);
+  return flags[key] === true;
+};
