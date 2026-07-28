@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 /**
@@ -122,10 +121,11 @@ export const useGradeLadder = (cardId: string | null) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!cardId) {
-      setData(null);
-      return;
-    }
+    // No setState here — this used to call setData(null) synchronously,
+    // which React's set-state-in-effect rule correctly flags (it forces an
+    // extra render pass). Bare return instead; the exposed `data` below is
+    // derived from `cardId` directly, matching usePriceHistory.ts's pattern.
+    if (!cardId) return;
 
     let cancelled = false;
     const t = window.setTimeout(() => {
@@ -155,10 +155,42 @@ export const useGradeLadder = (cardId: string | null) => {
     };
   }, [cardId]);
 
-  return { data, loading, error };
+  return {
+    data: cardId ? data : null,
+    loading: cardId ? loading : false,
+    error: cardId ? error : null,
+  };
 };
 
 // ─── Tracked list ───────────────────────────────────────────────────────────
+
+/**
+ * Defends against a stale backend still serving the old bare-array response
+ * instead of the current { summary, items } shape — same reasoning as the
+ * mobile hook's version of this function; keep both in sync.
+ */
+const normalizeTrackedRegradesResult = (
+  raw: unknown,
+): TrackedRegradesResult => {
+  if (
+    raw &&
+    typeof raw === "object" &&
+    Array.isArray((raw as { items?: unknown }).items)
+  ) {
+    return raw as TrackedRegradesResult;
+  }
+  const items = Array.isArray(raw) ? (raw as TrackedRegradeRow[]) : [];
+  return {
+    items,
+    summary: {
+      totalTracked: items.length,
+      totalBasis: 0,
+      projectedValue: 0,
+      totalUpside: 0,
+      byStatus: {},
+    },
+  };
+};
 
 export const useTrackedRegrades = (enabled: boolean = true) => {
   const [data, setData] = useState<TrackedRegradesResult | null>(null);
@@ -169,18 +201,16 @@ export const useTrackedRegrades = (enabled: boolean = true) => {
   const refetch = useCallback(() => setRefetchTick((t) => t + 1), []);
 
   useEffect(() => {
-    if (!enabled) {
-      setData(null);
-      return;
-    }
+    // Bare return, no setState — same reasoning as useGradeLadder above.
+    if (!enabled) return;
 
     let cancelled = false;
     setLoading(true);
     setError(null);
     api
-      .get<{ data: TrackedRegradesResult }>("/regrades")
+      .get<{ data: unknown }>("/regrades")
       .then((res) => {
-        if (!cancelled) setData(res.data.data);
+        if (!cancelled) setData(normalizeTrackedRegradesResult(res.data.data));
       })
       .catch((err) => {
         if (!cancelled) {
@@ -197,7 +227,12 @@ export const useTrackedRegrades = (enabled: boolean = true) => {
     };
   }, [enabled, refetchTick]);
 
-  return { data, loading, error, refetch };
+  return {
+    data: enabled ? data : null,
+    loading: enabled ? loading : false,
+    error: enabled ? error : null,
+    refetch,
+  };
 };
 
 // ─── Mutations — plain async functions, no hook wrapper needed ─────────────

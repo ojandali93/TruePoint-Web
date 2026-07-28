@@ -107,6 +107,14 @@ interface FlagUserResult {
   full_name?: string;
 }
 
+// Mirrors server/src/constants/featureFlagKeys.ts's KnownFlag — served via
+// GET /admin/flags/known-keys, not imported directly (separate codebase).
+interface KnownFlag {
+  key: string;
+  label: string;
+  description: string;
+}
+
 interface GradingCost {
   id: string;
   company: string;
@@ -2096,6 +2104,20 @@ function CreateFlagOverlay({
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [knownFlags, setKnownFlags] = useState<KnownFlag[]>([]);
+
+  useEffect(() => {
+    api
+      .get<{ data: KnownFlag[] }>("/admin/flags/known-keys")
+      .then((r) => setKnownFlags(r.data.data ?? []))
+      .catch(() => setKnownFlags([])); // suggestions are a nicety, not required
+  }, []);
+
+  const pickKnown = (flag: KnownFlag) => {
+    setKey(flag.key);
+    // Only prefill description if nothing's typed yet — don't clobber it.
+    setDescription((prev) => prev || flag.description);
+  };
 
   const submit = async () => {
     const normalized = key
@@ -2134,9 +2156,38 @@ function CreateFlagOverlay({
         New feature flag
       </div>
       <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 16 }}>
-        Created dark: killed on, audience off. Nobody sees it until you target
-        an audience.
+        Created dark: killed on, audience allowlist. Nobody sees it until you
+        add a user.
       </div>
+
+      {knownFlags.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={flagLabelStyle}>Connect to a feature already built</div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+              marginBottom: 8,
+            }}
+          >
+            {knownFlags.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => pickKnown(f)}
+                style={chipStyle(key === f.key)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
+            Clicking one fills the key below exactly as the code checks for it —
+            no chance of a typo mismatch. Building something new instead? Just
+            type its key below; it doesn&apos;t have to be on this list yet.
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 12 }}>
         <div style={flagLabelStyle}>Key</div>
