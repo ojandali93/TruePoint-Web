@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -8,7 +9,12 @@ import { usePendingAction } from "../../../context/PendingActionContext";
 // ─── AI Grading (lazy imported inline below) ──────────────────────────────────
 import AIGradingPage from "./ai/page";
 import { FeatureGate } from "@/components/PlanGuards";
-import { usePlan } from "@/context/PlanContext";
+import { usePlan, useFlag } from "@/context/PlanContext";
+import { TrackRegradeModal } from "@/components/grading/TrackRegradeModal";
+import {
+  useTrackedRegrades,
+  type TrackedRegradeRow,
+} from "../../../hooks/useRegradeTracker";
 
 type PageTab = "arbitrage" | "submissions" | "ai" | "trade";
 
@@ -864,7 +870,11 @@ function OpportunityRow({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-function GradingArbitragePage() {
+// Owned-inventory arbitrage — this is the ENTIRE original GradingArbitragePage,
+// unchanged internally, just renamed so the new outer GradingArbitragePage
+// (below, after TrackedArbitragePage) can switch between this and the new
+// Tracked sub-view.
+function OwnedArbitragePage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [costs, setCosts] = useState<GradingCosts | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1342,6 +1352,430 @@ function GradingArbitragePage() {
         </div>
       )}
       {showCalc && <GradingCalculator onClose={() => setShowCalc(false)} />}
+    </div>
+  );
+}
+
+// ─── Tracked (unowned) regrade candidates ──────────────────────────────────
+//
+// Sibling to OwnedArbitragePage above, but for cards the user is researching
+// and doesn't necessarily own. Adding a card here happens from card detail
+// ("Track for regrade"), not from this screen.
+
+const TRACKED_STATUS_CONFIG: Record<
+  string,
+  { label: string; color: string; bg: string }
+> = {
+  researching: {
+    label: "Researching",
+    color: "#787d87",
+    bg: "rgba(120,125,135,0.12)",
+  },
+  owned: { label: "Owned", color: "#3B82F6", bg: "rgba(59,130,246,0.12)" },
+  submitted: {
+    label: "Submitted",
+    color: "#F59E0B",
+    bg: "rgba(245,158,11,0.12)",
+  },
+  returned: {
+    label: "Returned",
+    color: "#10B981",
+    bg: "rgba(16,185,129,0.12)",
+  },
+  sold: { label: "Sold", color: "#C9A84C", bg: "rgba(201,168,76,0.12)" },
+};
+
+function TrackedArbitragePage() {
+  const { data, loading, error, refetch } = useTrackedRegrades(true);
+  const [editing, setEditing] = useState<TrackedRegradeRow | null>(null);
+
+  if (loading) {
+    return (
+      <div style={{ padding: "32px 40px", maxWidth: 1100, margin: "0 auto" }}>
+        <div
+          style={{
+            textAlign: "center",
+            padding: 80,
+            color: "var(--text-dim)",
+            fontSize: 13,
+          }}
+        >
+          Loading tracked cards...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: "32px 40px", maxWidth: 1100, margin: "0 auto" }}>
+        <div
+          style={{
+            textAlign: "center",
+            padding: 80,
+            color: "#e85f5f",
+            fontSize: 13,
+          }}
+        >
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  const items = data?.items ?? [];
+  const summary = data?.summary;
+
+  return (
+    <div style={{ padding: "32px 40px", maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ marginBottom: 28 }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--gold)",
+            letterSpacing: "0.1em",
+            fontFamily: "DM Mono, monospace",
+            marginBottom: 6,
+          }}
+        >
+          GRADING
+        </div>
+        <h1
+          style={{
+            fontSize: 28,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 6,
+          }}
+        >
+          Tracked Regrades
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+          Cards you&apos;re researching but don&apos;t own — see the price
+          ladder before deciding whether to chase a grade.
+        </p>
+      </div>
+
+      {items.length === 0 ? (
+        <div
+          style={{
+            textAlign: "center",
+            padding: "60px 20px",
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            background: "var(--surface)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              color: "var(--text-primary)",
+              marginBottom: 8,
+            }}
+          >
+            Nothing tracked yet
+          </div>
+          <div
+            style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 16 }}
+          >
+            Find a card and click &quot;Track for regrade&quot; on its detail
+            page.
+          </div>
+          <a
+            href='/cards'
+            style={{
+              display: "inline-block",
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: "var(--gold)",
+              color: "var(--charcoal, #0E0E12)",
+              fontSize: 12,
+              fontWeight: 700,
+              textDecoration: "none",
+            }}
+          >
+            Browse cards
+          </a>
+        </div>
+      ) : (
+        <>
+          {summary && (
+            <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+              <TrackedKpiCard
+                label='Tracked'
+                value={String(summary.totalTracked)}
+              />
+              <TrackedKpiCard
+                label='Projected'
+                value={`$${summary.projectedValue.toFixed(0)}`}
+                tone='gold'
+              />
+              <TrackedKpiCard
+                label='Upside'
+                value={`${summary.totalUpside >= 0 ? "+" : ""}$${summary.totalUpside.toFixed(0)}`}
+                tone={summary.totalUpside >= 0 ? "green" : "muted"}
+              />
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {items.map((item) => (
+              <TrackedOpportunityRow
+                key={item.id}
+                tracked={item}
+                onClick={() => setEditing(item)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {editing && (
+        <TrackRegradeModal
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onSaved={refetch}
+          onDeleted={refetch}
+        />
+      )}
+    </div>
+  );
+}
+
+function TrackedKpiCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "gold" | "muted" | "green";
+}) {
+  const color =
+    tone === "gold"
+      ? "var(--gold)"
+      : tone === "green"
+        ? "#10B981"
+        : tone === "muted"
+          ? "var(--text-secondary)"
+          : "var(--text-primary)";
+  return (
+    <div
+      style={{
+        flex: 1,
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: "10px 14px",
+      }}
+    >
+      <div
+        style={{ fontSize: 10, color: "var(--text-dim)", letterSpacing: 0.5 }}
+      >
+        {label.toUpperCase()}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 500, color, marginTop: 2 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function TrackedOpportunityRow({
+  tracked,
+  onClick,
+}: {
+  tracked: TrackedRegradeRow;
+  onClick: () => void;
+}) {
+  const status =
+    TRACKED_STATUS_CONFIG[tracked.status] ?? TRACKED_STATUS_CONFIG.researching;
+  const fromLabel = tracked.currentCompany
+    ? `${tracked.currentCompany} ${tracked.currentGrade}`
+    : "Raw";
+
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        padding: "14px 16px",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        background: "var(--surface)",
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <div
+        style={{
+          width: 36,
+          height: 50,
+          flexShrink: 0,
+          borderRadius: 4,
+          overflow: "hidden",
+          background: "var(--surface-2)",
+        }}
+      >
+        {tracked.imageSmall && (
+          <Image
+            src={tracked.imageSmall}
+            alt={tracked.cardName}
+            width={36}
+            height={50}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        )}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 2,
+          }}
+        >
+          {tracked.cardName}
+        </div>
+        <div
+          style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}
+        >
+          {tracked.setName}
+          {tracked.cardNumber ? ` · #${tracked.cardNumber}` : ""}
+        </div>
+        <span
+          style={{
+            display: "inline-block",
+            padding: "2px 8px",
+            borderRadius: 100,
+            background: status.bg,
+            border: `1px solid ${status.color}55`,
+            fontSize: 9,
+            fontWeight: 700,
+            color: status.color,
+            letterSpacing: 0.3,
+          }}
+        >
+          {status.label}
+          {tracked.estimatedROI !== null
+            ? ` · ${tracked.estimatedROI >= 0 ? "+" : ""}${tracked.estimatedROI.toFixed(0)}%`
+            : ""}
+        </span>
+      </div>
+
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div
+          style={{ fontSize: 10, color: "var(--text-dim)", letterSpacing: 0.3 }}
+        >
+          {fromLabel.toUpperCase()} → {tracked.targetCompany}{" "}
+          {tracked.targetGrade}
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--text-primary)",
+            marginTop: 2,
+          }}
+        >
+          ${tracked.currentPrice?.toFixed(0) ?? "—"} → $
+          {tracked.targetPrice?.toFixed(0) ?? "—"}
+        </div>
+        {tracked.estimatedProfit !== null && (
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: tracked.estimatedProfit >= 0 ? "#10B981" : "#e85f5f",
+              marginTop: 2,
+            }}
+          >
+            {tracked.estimatedProfit >= 0 ? "+" : "−"}$
+            {Math.abs(tracked.estimatedProfit).toFixed(0)}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ─── Outer wrapper — Inventory / Tracked sub-tabs ──────────────────────────
+//
+// The "Tracked" chip — and the sub-tab strip itself — only render when the
+// regrade_tracker flag is on for this account. With the flag off, this
+// renders exactly what the page always rendered: OwnedArbitragePage, wrapped
+// in the SAME regrade_arbitrage plan gate it always had. That gate moved
+// down from the parent tab-switcher into here so it now wraps only the
+// Inventory sub-view — Tracked is deliberately NOT behind it. Per-plan
+// gating for Tracked is a deliberate later step, not an oversight; see the
+// note where this function is called below.
+
+function GradingArbitragePage() {
+  const canTrackRegrades = useFlag("regrade_tracker");
+  const [subTab, setSubTab] = useState<"inventory" | "tracked">("inventory");
+
+  if (!canTrackRegrades) {
+    return (
+      <FeatureGate
+        feature='regrade_arbitrage'
+        upgradeTo='collector'
+        featureLabel='regrade arbitrage'
+      >
+        <OwnedArbitragePage />
+      </FeatureGate>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 40px 0" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: -8 }}>
+        {[
+          { value: "inventory" as const, label: "Inventory" },
+          { value: "tracked" as const, label: "Tracked" },
+        ].map((t) => {
+          const isActive = subTab === t.value;
+          return (
+            <button
+              key={t.value}
+              onClick={() => setSubTab(t.value)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 100,
+                border: `1px solid ${isActive ? "var(--gold)" : "var(--border)"}`,
+                background: isActive ? "var(--gold)" : "var(--surface)",
+                color: isActive
+                  ? "var(--charcoal, #0E0E12)"
+                  : "var(--text-secondary)",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ margin: "0 -40px" }}>
+        {subTab === "inventory" ? (
+          <FeatureGate
+            feature='regrade_arbitrage'
+            upgradeTo='collector'
+            featureLabel='regrade arbitrage'
+          >
+            <OwnedArbitragePage />
+          </FeatureGate>
+        ) : (
+          <TrackedArbitragePage />
+        )}
+      </div>
     </div>
   );
 }
@@ -4744,15 +5178,10 @@ export default function GradingPage() {
         </div>
       </div>
 
-      {tab === "arbitrage" && (
-        <FeatureGate
-          feature='regrade_arbitrage'
-          upgradeTo='collector'
-          featureLabel='regrade arbitrage'
-        >
-          <GradingArbitragePage />
-        </FeatureGate>
-      )}
+      {/* FeatureGate moved inside GradingArbitragePage — it now wraps only
+          the Inventory sub-view, so Tracked isn't caught behind the same
+          plan wall. See the comment above that function. */}
+      {tab === "arbitrage" && <GradingArbitragePage />}
       {tab === "submissions" && (
         <FeatureGate
           feature='submission_tracking'

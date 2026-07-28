@@ -22,12 +22,14 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { useCollections } from "../../../../../context/CollectionContext";
+import { useFlag } from "../../../../../context/PlanContext";
 import {
   useCardDetail,
   flattenAndFilterPrices,
 } from "../../../../../hooks/useCardDetail";
 import { useCardGradedPrices } from "../../../../../hooks/useCardGradedPrices";
 import type { GradedPriceRow } from "../../../../../hooks/useCardGradedPrices";
+import { useTrackedRegrades } from "../../../../../hooks/useRegradeTracker";
 import {
   patternKeyFromName,
   variantLabel,
@@ -38,6 +40,7 @@ import RecentSalesSection from "../../../../../components/cards/RecentSalesSecti
 import QuickAddInventory from "../../../../../components/cards/QuickAddInventory";
 import type { QuickAddVariant } from "../../../../../components/cards/QuickAddInventory";
 import QuickAddGradedInventory from "../../../../../components/cards/QuickAddGradedInventory";
+import { TrackRegradeModal } from "../../../../../components/grading/TrackRegradeModal";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +64,15 @@ export default function CardDetailPage({
 
   const { card, prices, loading, error } = useCardDetail(cardId);
   const { prices: gradedPrices } = useCardGradedPrices(cardId);
+
+  // Regrade tracker — entry point only renders when the flag is on for this
+  // account (hiding the button, not just what it opens).
+  const canTrackRegrades = useFlag("regrade_tracker");
+  const { data: trackedData, refetch: refetchTracked } =
+    useTrackedRegrades(canTrackRegrades);
+  const existingTracked =
+    trackedData?.items.find((i) => i.cardId === cardId) ?? null;
+  const [trackModalOpen, setTrackModalOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"prices" | "grading">("grading");
 
@@ -305,7 +317,42 @@ export default function CardDetailPage({
           <RecentSalesSection cardId={cardId} />
           <RawPricesPanel prices={allPrices} />
           <GradedPricesPanel gradedPrices={gradedPrices} />
+
+          {canTrackRegrades && (
+            <button
+              onClick={() => setTrackModalOpen(true)}
+              style={{
+                width: "100%",
+                marginTop: 16,
+                padding: "12px 0",
+                borderRadius: 10,
+                border: `1px solid ${existingTracked ? "rgba(201,168,76,0.35)" : "var(--border)"}`,
+                background: "var(--surface-2)",
+                color: "var(--gold)",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {existingTracked
+                ? `Tracking · ${existingTracked.targetCompany} ${existingTracked.targetGrade} target`
+                : "Track for regrade"}
+            </button>
+          )}
         </>
+      )}
+
+      {trackModalOpen && card && (
+        <TrackRegradeModal
+          onClose={() => setTrackModalOpen(false)}
+          onSaved={refetchTracked}
+          onDeleted={refetchTracked}
+          createCardId={card.id}
+          createCardName={card.name}
+          createCardNumber={card.number}
+          existing={existingTracked ?? undefined}
+        />
       )}
     </div>
   );
