@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import {
   createTrackedRegrade,
@@ -48,6 +48,11 @@ export interface TrackRegradeModalProps {
   createCardId?: string;
   createCardName?: string;
   createCardNumber?: string;
+  // Prefill for create mode when the card was picked from inventory and is
+  // already graded — skips re-entering what the app already knows. Ignored
+  // in edit mode.
+  createCurrentCompany?: string | null;
+  createCurrentGrade?: string | null;
   existing?: TrackedRegradeRow;
 }
 
@@ -58,6 +63,8 @@ export function TrackRegradeModal({
   createCardId,
   createCardName,
   createCardNumber,
+  createCurrentCompany,
+  createCurrentGrade,
   existing,
 }: TrackRegradeModalProps) {
   const isEdit = !!existing;
@@ -72,10 +79,10 @@ export function TrackRegradeModal({
     existing?.targetGrade ?? null,
   );
   const [currentCompany, setCurrentCompany] = useState<string | null>(
-    existing?.currentCompany ?? null,
+    existing?.currentCompany ?? createCurrentCompany ?? null,
   );
   const [currentGrade, setCurrentGrade] = useState<string | null>(
-    existing?.currentGrade ?? null,
+    existing?.currentGrade ?? createCurrentGrade ?? null,
   );
   const [acquisitionPrice, setAcquisitionPrice] = useState(
     existing?.acquisitionPrice != null ? String(existing.acquisitionPrice) : "",
@@ -89,6 +96,28 @@ export function TrackRegradeModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Accordion state. Fresh create walks Current → Target in order; edit
+  // starts with both collapsed (already resolved) and either can be
+  // reopened by clicking its header. This component remounts fresh each
+  // time the caller opens it (no reset effect needed, unlike mobile), so
+  // these initial values are computed once, straight from props.
+  const startsGraded = existing
+    ? !!existing.currentCompany
+    : !!createCurrentCompany;
+  const startsResolved = existing ? true : !!createCurrentCompany; // inventory pick already answered this
+  const [expandedSection, setExpandedSection] = useState<
+    "current" | "target" | null
+  >(existing ? null : startsResolved ? "target" : "current");
+  const [currentChoice, setCurrentChoice] = useState<"raw" | "graded" | null>(
+    existing
+      ? startsGraded
+        ? "graded"
+        : "raw"
+      : startsResolved
+        ? "graded"
+        : null,
+  );
+
   // Group the flat ladder into per-company sections, matching mobile.
   const ladderByCompany = useMemo(() => {
     const rows = ladder.data?.ladder ?? [];
@@ -99,6 +128,33 @@ export function TrackRegradeModal({
     }
     return grouped;
   }, [ladder.data]);
+
+  const pickTarget = (company: string, grade: string) => {
+    setTargetCompany(company);
+    setTargetGrade(grade);
+    setExpandedSection(null);
+  };
+
+  const chooseRaw = () => {
+    setCurrentChoice("raw");
+    setCurrentCompany(null);
+    setCurrentGrade(null);
+    setExpandedSection(targetGrade ? null : "target");
+  };
+
+  const chooseGraded = () => {
+    setCurrentChoice("graded");
+  };
+
+  const pickCurrent = (company: string, grade: string) => {
+    setCurrentCompany(company);
+    setCurrentGrade(grade);
+    setExpandedSection(targetGrade ? null : "target");
+  };
+
+  const toggleSection = (section: "current" | "target") => {
+    setExpandedSection((prev) => (prev === section ? null : section));
+  };
 
   const save = async () => {
     if (!cardId) return;
@@ -220,119 +276,68 @@ export function TrackRegradeModal({
           </div>
         )}
 
-        {/* ─── Price ladder ─────────────────────────────────────── */}
-        <div style={fieldLabel}>
-          PRICE LADDER — CLICK A GRADE TO SET AS TARGET
-        </div>
-        {ladder.loading ? (
-          <div
-            style={{
-              padding: "16px 0",
-              fontSize: 12,
-              color: "var(--text-dim)",
-            }}
-          >
-            Loading…
+        {/* ─── Current condition ──────────────────────────────────── */}
+        <AccordionSection
+          title='Current condition'
+          summary={
+            currentChoice === "raw"
+              ? "Raw / Ungraded"
+              : currentCompany && currentGrade
+                ? `${currentCompany} ${currentGrade}`
+                : "Not set"
+          }
+          resolved={currentChoice !== null}
+          expanded={expandedSection === "current"}
+          onToggle={() => toggleSection("current")}
+        >
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={chooseRaw}
+              style={choiceButtonStyle(currentChoice === "raw")}
+            >
+              Raw / Ungraded
+            </button>
+            <button
+              onClick={chooseGraded}
+              style={choiceButtonStyle(currentChoice === "graded")}
+            >
+              Already graded
+            </button>
           </div>
-        ) : ladder.error ? (
-          <div style={{ fontSize: 12, color: "#e85f5f", marginBottom: 16 }}>
-            Couldn&apos;t load prices for this card.
-          </div>
-        ) : ladderByCompany.size === 0 ? (
-          <div
-            style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 16 }}
-          >
-            No graded price data yet for this card.
-          </div>
-        ) : (
-          <div style={{ marginBottom: 20 }}>
-            {!!ladder.data?.rawPrice && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-dim)",
-                  marginBottom: 10,
-                }}
-              >
-                Raw market price: ${ladder.data.rawPrice.toFixed(0)}
-              </div>
-            )}
-            {Array.from(ladderByCompany.entries()).map(([company, entries]) => (
-              <div key={company} style={{ marginBottom: 10 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: COMPANY_COLORS[company] ?? "var(--text-secondary)",
-                    marginBottom: 6,
-                  }}
-                >
-                  {company}
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {entries.map((e) => {
-                    const isTarget =
-                      targetCompany === company && targetGrade === e.grade;
-                    return (
-                      <button
-                        key={`${company}-${e.grade}`}
-                        onClick={() => {
-                          setTargetCompany(company);
-                          setTargetGrade(e.grade);
-                        }}
-                        style={chipStyle(isTarget)}
-                      >
-                        {e.grade} · ${e.price.toFixed(0)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
 
-        {/* ─── Current grade (optional) ─────────────────────────── */}
-        {ladderByCompany.size > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={fieldLabel}>
-              CURRENT GRADE (OPTIONAL — LEAVE BLANK IF RAW/UNGRADED)
+          {currentChoice === "graded" && (
+            <div style={{ marginTop: 12 }}>
+              <GradeGrid
+                ladder={ladder}
+                ladderByCompany={ladderByCompany}
+                selectedCompany={currentCompany}
+                selectedGrade={currentGrade}
+                onPick={pickCurrent}
+              />
             </div>
-            {Array.from(ladderByCompany.entries()).map(([company, entries]) => (
-              <div
-                key={`cur-group-${company}`}
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 6,
-                  marginBottom: 6,
-                }}
-              >
-                {entries.map((e) => {
-                  const isCurrent =
-                    currentCompany === company && currentGrade === e.grade;
-                  return (
-                    <button
-                      key={`cur-${company}-${e.grade}`}
-                      onClick={() => {
-                        if (isCurrent) {
-                          setCurrentCompany(null);
-                          setCurrentGrade(null);
-                        } else {
-                          setCurrentCompany(company);
-                          setCurrentGrade(e.grade);
-                        }
-                      }}
-                      style={smallChipStyle(isCurrent)}
-                    >
-                      {company} {e.grade}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        )}
+          )}
+        </AccordionSection>
+
+        {/* ─── Target grade ───────────────────────────────────────── */}
+        <AccordionSection
+          title='Target grade'
+          summary={
+            targetCompany && targetGrade
+              ? `${targetCompany} ${targetGrade}`
+              : "Not set"
+          }
+          resolved={!!targetCompany && !!targetGrade}
+          expanded={expandedSection === "target"}
+          onToggle={() => toggleSection("target")}
+        >
+          <GradeGrid
+            ladder={ladder}
+            ladderByCompany={ladderByCompany}
+            selectedCompany={targetCompany}
+            selectedGrade={targetGrade}
+            onPick={pickTarget}
+          />
+        </AccordionSection>
 
         {/* ─── Status (edit mode only) ────────────────────────────── */}
         {isEdit && (
@@ -480,17 +485,190 @@ function chipStyle(active: boolean): CSSProperties {
   };
 }
 
-function smallChipStyle(active: boolean): CSSProperties {
+// ─── Accordion shell ────────────────────────────────────────────────────────
+//
+// Collapsed: title + resolved-value summary + chevron, click to expand.
+// Expanded: same header, plus whatever's passed as children below it. Used
+// identically for both Current and Target so they look and behave the
+// same — the thing that was inconsistent before this redesign.
+
+function AccordionSection({
+  title,
+  summary,
+  resolved,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  summary: string;
+  resolved: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${expanded ? "var(--gold)" : "var(--border)"}`,
+        borderRadius: 10,
+        background: "var(--surface)",
+        marginBottom: 16,
+        overflow: "hidden",
+      }}
+    >
+      <button
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 16px",
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          textAlign: "left",
+          fontFamily: "inherit",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--text-dim)",
+              letterSpacing: "0.06em",
+              fontWeight: 600,
+            }}
+          >
+            {title.toUpperCase()}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: resolved ? "var(--text-primary)" : "var(--text-dim)",
+              fontWeight: resolved ? 600 : 400,
+              marginTop: 2,
+            }}
+          >
+            {summary}
+          </div>
+        </div>
+        <span
+          style={{
+            color: "var(--text-secondary)",
+            fontSize: 12,
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.15s",
+          }}
+        >
+          ▾
+        </span>
+      </button>
+
+      {expanded && <div style={{ padding: "0 16px 16px" }}>{children}</div>}
+    </div>
+  );
+}
+
+function choiceButtonStyle(active: boolean): CSSProperties {
   return {
-    padding: "6px 10px",
-    borderRadius: 6,
-    border: `1px solid ${active ? "var(--text-primary)" : "var(--border)"}`,
-    background: active ? "var(--surface-2)" : "transparent",
-    color: active ? "var(--text-primary)" : "var(--text-dim)",
-    fontSize: 11,
+    flex: 1,
+    padding: "10px 0",
+    borderRadius: 8,
+    border: `1px solid ${active ? "var(--gold)" : "var(--border)"}`,
+    background: active ? "rgba(201,168,76,0.1)" : "var(--surface-2)",
+    color: active ? "var(--gold)" : "var(--text-primary)",
+    fontSize: 12,
+    fontWeight: active ? 700 : 500,
     cursor: "pointer",
     fontFamily: "inherit",
   };
+}
+
+// ─── Shared grade grid ──────────────────────────────────────────────────────
+//
+// One component, used for both Current and Target — this is what makes the
+// two pickers actually look and behave identically instead of the
+// mismatched chip styles the old layout had.
+
+function GradeGrid({
+  ladder,
+  ladderByCompany,
+  selectedCompany,
+  selectedGrade,
+  onPick,
+}: {
+  ladder: ReturnType<typeof useGradeLadder>;
+  ladderByCompany: Map<string, LadderEntry[]>;
+  selectedCompany: string | null;
+  selectedGrade: string | null;
+  onPick: (company: string, grade: string) => void;
+}) {
+  if (ladder.loading) {
+    return (
+      <div
+        style={{ padding: "16px 0", fontSize: 12, color: "var(--text-dim)" }}
+      >
+        Loading…
+      </div>
+    );
+  }
+  if (ladder.error) {
+    return (
+      <div style={{ fontSize: 12, color: "#e85f5f" }}>
+        Couldn&apos;t load prices for this card.
+      </div>
+    );
+  }
+  if (ladderByCompany.size === 0) {
+    return (
+      <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+        No graded price data yet for this card.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {!!ladder.data?.rawPrice && (
+        <div
+          style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 10 }}
+        >
+          Raw market price: ${ladder.data.rawPrice.toFixed(0)}
+        </div>
+      )}
+      {Array.from(ladderByCompany.entries()).map(([company, entries]) => (
+        <div key={company} style={{ marginBottom: 10 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: COMPANY_COLORS[company] ?? "var(--text-secondary)",
+              marginBottom: 6,
+            }}
+          >
+            {company}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {entries.map((e) => {
+              const isSelected =
+                selectedCompany === company && selectedGrade === e.grade;
+              return (
+                <button
+                  key={`${company}-${e.grade}`}
+                  onClick={() => onPick(company, e.grade)}
+                  style={chipStyle(isSelected)}
+                >
+                  {e.grade} · ${e.price.toFixed(0)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 const secondaryButtonStyle: CSSProperties = {

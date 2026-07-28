@@ -1385,9 +1385,643 @@ const TRACKED_STATUS_CONFIG: Record<
   sold: { label: "Sold", color: "#C9A84C", bg: "rgba(201,168,76,0.12)" },
 };
 
+// ─── Add-to-track overlay ───────────────────────────────────────────────────
+//
+// One overlay, two ways to pick a card: search box empty → browse your
+// inventory (raw + graded only, sealed product excluded); typing → global
+// card search. Reuses the exact /cards/search endpoint TradeCardSearch
+// already uses elsewhere in this file. Picking either kind of result calls
+// onPick and closes — the caller opens TrackRegradeModal in create mode
+// with what comes back.
+
+interface PickedTrackCard {
+  cardId: string;
+  cardName: string;
+  cardNumber: string;
+  currentCompany: string | null;
+  currentGrade: string | null;
+}
+
+interface InventoryPickItem {
+  id: string;
+  item_type: string;
+  grading_company: string | null;
+  grade: string | null;
+  card: {
+    id: string;
+    name: string;
+    number: string;
+    image_small: string | null;
+  } | null;
+}
+
+function AddTrackedCardOverlay({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void;
+  onPick: (card: PickedTrackCard) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<CardSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const [inventoryItems, setInventoryItems] = useState<InventoryPickItem[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get<{ data: { items: InventoryPickItem[] } }>("/inventory")
+      .then((res) => {
+        const items = (res.data.data.items ?? []).filter(
+          (it) =>
+            (it.item_type === "raw_card" || it.item_type === "graded_card") &&
+            it.card,
+        );
+        setInventoryItems(items);
+      })
+      .catch(() => setInventoryItems([]))
+      .finally(() => setInventoryLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await api.get<{ data: { data: CardSearchResult[] } }>(
+          `/cards/search?q=${encodeURIComponent(q)}&limit=12`,
+        );
+        setResults(res.data.data?.data ?? []);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const isSearching = query.trim().length > 0;
+
+  const pickInventory = (item: InventoryPickItem) => {
+    onPick({
+      cardId: item.card!.id,
+      cardName: item.card!.name,
+      cardNumber: item.card!.number,
+      currentCompany: item.grading_company ?? null,
+      currentGrade: item.grade ?? null,
+    });
+  };
+
+  const pickSearch = (c: CardSearchResult) => {
+    onPick({
+      cardId: c.id,
+      cardName: c.name,
+      cardNumber: c.number,
+      currentCompany: null,
+      currentGrade: null,
+    });
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          padding: 24,
+          width: 480,
+          maxHeight: "80vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 14,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 500,
+              color: "var(--text-primary)",
+            }}
+          >
+            Track a card
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: 18,
+              cursor: "pointer",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder='Search any card, or browse your inventory below'
+          autoFocus
+          style={{
+            width: "100%",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "10px 12px",
+            fontSize: 13,
+            color: "var(--text-primary)",
+            fontFamily: "inherit",
+            outline: "none",
+            boxSizing: "border-box",
+            marginBottom: 14,
+          }}
+        />
+
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          {isSearching ? (
+            searching ? (
+              <div
+                style={{ padding: 20, fontSize: 12, color: "var(--text-dim)" }}
+              >
+                Searching…
+              </div>
+            ) : results.length === 0 ? (
+              <div
+                style={{ padding: 20, fontSize: 12, color: "var(--text-dim)" }}
+              >
+                No matches. Try the card name or its number.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {results.map((c) => (
+                  <PickRow
+                    key={c.id}
+                    name={c.name}
+                    detail={c.number ? `#${c.number}` : ""}
+                    imageSmall={c.image_small}
+                    onClick={() => pickSearch(c)}
+                  />
+                ))}
+              </div>
+            )
+          ) : (
+            <>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--text-dim)",
+                  letterSpacing: "0.06em",
+                  marginBottom: 8,
+                }}
+              >
+                FROM YOUR INVENTORY
+              </div>
+              {inventoryLoading ? (
+                <div
+                  style={{
+                    padding: 20,
+                    fontSize: 12,
+                    color: "var(--text-dim)",
+                  }}
+                >
+                  Loading…
+                </div>
+              ) : inventoryItems.length === 0 ? (
+                <div
+                  style={{
+                    padding: 20,
+                    fontSize: 12,
+                    color: "var(--text-dim)",
+                  }}
+                >
+                  No raw or graded cards in your inventory yet. Search above for
+                  any card instead.
+                </div>
+              ) : (
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                >
+                  {inventoryItems.map((item) => (
+                    <PickRow
+                      key={item.id}
+                      name={item.card!.name}
+                      detail={
+                        item.grading_company && item.grade
+                          ? `${item.grading_company} ${item.grade}`
+                          : "Raw"
+                      }
+                      imageSmall={item.card!.image_small}
+                      onClick={() => pickInventory(item)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PickRow({
+  name,
+  detail,
+  imageSmall,
+  onClick,
+}: {
+  name: string;
+  detail: string;
+  imageSmall: string | null;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 10px",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        background: "var(--surface-2)",
+        cursor: "pointer",
+        textAlign: "left",
+        width: "100%",
+      }}
+    >
+      <div
+        style={{
+          width: 32,
+          height: 44,
+          flexShrink: 0,
+          borderRadius: 4,
+          overflow: "hidden",
+          background: "var(--surface)",
+        }}
+      >
+        {imageSmall && (
+          <Image
+            src={imageSmall}
+            alt={name}
+            width={32}
+            height={44}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        )}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--text-primary)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {name}
+        </div>
+        <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{detail}</div>
+      </div>
+    </button>
+  );
+}
+
+// ─── Recommended (top 10 owned) overlay ────────────────────────────────────
+//
+// Read-only view over the same GET /grading/arbitrage OwnedArbitragePage
+// already uses — no new backend endpoint, that response already ranks by
+// ROI and slices to the top 10 server-side. Not interactive beyond closing.
+
+function RecommendedGradesOverlay({ onClose }: { onClose: () => void }) {
+  const [top, setTop] = useState<Opportunity[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get<{ data: Summary }>(
+        `/grading/arbitrage?service=PSA&tier=value&grade=10`,
+      )
+      .then((res) =>
+        setTop((res.data.data.topOpportunities ?? []).slice(0, 10)),
+      )
+      .catch(() => setTop([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 14,
+          padding: 24,
+          width: 520,
+          maxHeight: "80vh",
+          overflowY: "auto",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 4,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 500,
+              color: "var(--text-primary)",
+            }}
+          >
+            Recommended
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: 18,
+              cursor: "pointer",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div
+          style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 16 }}
+        >
+          Top raw cards in your inventory worth grading
+        </div>
+
+        {loading ? (
+          <div style={{ padding: 20, fontSize: 12, color: "var(--text-dim)" }}>
+            Loading…
+          </div>
+        ) : top.length === 0 ? (
+          <div style={{ padding: 20, fontSize: 12, color: "var(--text-dim)" }}>
+            No strong grading opportunities in your raw inventory right now.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {top.map((opp) => (
+              <div
+                key={opp.inventoryId}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "10px 12px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  background: "var(--surface-2)",
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 44,
+                    flexShrink: 0,
+                    borderRadius: 4,
+                    overflow: "hidden",
+                    background: "var(--surface)",
+                  }}
+                >
+                  {opp.imageSmall && (
+                    <Image
+                      src={opp.imageSmall}
+                      alt={opp.cardName}
+                      width={32}
+                      height={44}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-primary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {opp.cardName}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                    ${opp.rawPrice?.toFixed(0) ?? "—"} →{" "}
+                    {opp.bestGrade?.company} {opp.bestGrade?.grade} · $
+                    {opp.bestGrade?.price.toFixed(0) ?? "—"}
+                  </div>
+                </div>
+                {opp.bestROI !== null && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: opp.bestROI >= 0 ? "#10B981" : "#e85f5f",
+                    }}
+                  >
+                    {opp.bestROI >= 0 ? "+" : ""}
+                    {opp.bestROI.toFixed(0)}%
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Sorting ────────────────────────────────────────────────────────────────
+//
+// "Recent" is the backend's own order (created_at desc) — everything else
+// is sorted client-side since the whole list is already in memory. "Card
+// name" is what actually groups multiple tracked entries for the same card
+// together in a way that's readable — sorting by the raw card id wouldn't
+// mean anything to look at.
+
+type TrackedSortKey = "recent" | "name" | "profit" | "roi";
+
+const TRACKED_SORT_OPTIONS: { key: TrackedSortKey; label: string }[] = [
+  { key: "recent", label: "Recent" },
+  { key: "name", label: "Card name" },
+  { key: "profit", label: "Profit" },
+  { key: "roi", label: "ROI" },
+];
+
+function sortTracked(
+  items: TrackedRegradeRow[],
+  key: TrackedSortKey,
+): TrackedRegradeRow[] {
+  if (key === "recent") return items; // already backend-ordered
+  const copy = [...items];
+  switch (key) {
+    case "name":
+      copy.sort((a, b) => a.cardName.localeCompare(b.cardName));
+      break;
+    case "profit":
+      copy.sort(
+        (a, b) =>
+          (b.estimatedProfit ?? -Infinity) - (a.estimatedProfit ?? -Infinity),
+      );
+      break;
+    case "roi":
+      copy.sort(
+        (a, b) => (b.estimatedROI ?? -Infinity) - (a.estimatedROI ?? -Infinity),
+      );
+      break;
+  }
+  return copy;
+}
+
 function TrackedArbitragePage() {
   const { data, loading, error, refetch } = useTrackedRegrades(true);
   const [editing, setEditing] = useState<TrackedRegradeRow | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [recommendedOpen, setRecommendedOpen] = useState(false);
+  // A card just picked from AddTrackedCardOverlay, waiting to open
+  // TrackRegradeModal in create mode with it prefilled.
+  const [pickedCard, setPickedCard] = useState<PickedTrackCard | null>(null);
+  const [sortKey, setSortKey] = useState<TrackedSortKey>("recent");
+
+  const handlePicked = (card: PickedTrackCard) => {
+    setAddOpen(false);
+    setPickedCard(card);
+  };
+
+  const actionButtons = (
+    <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+      <button
+        onClick={() => setAddOpen(true)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "10px 18px",
+          borderRadius: 8,
+          border: "none",
+          background: "var(--gold)",
+          color: "var(--charcoal, #0E0E12)",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        + Add card to track
+      </button>
+      <button
+        onClick={() => setRecommendedOpen(true)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "10px 18px",
+          borderRadius: 8,
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          color: "var(--text-primary)",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        ✦ Recommended
+      </button>
+    </div>
+  );
+
+  const overlays = (
+    <>
+      {editing && (
+        <TrackRegradeModal
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onSaved={refetch}
+          onDeleted={refetch}
+        />
+      )}
+      {addOpen && (
+        <AddTrackedCardOverlay
+          onClose={() => setAddOpen(false)}
+          onPick={handlePicked}
+        />
+      )}
+      {recommendedOpen && (
+        <RecommendedGradesOverlay onClose={() => setRecommendedOpen(false)} />
+      )}
+      {pickedCard && (
+        <TrackRegradeModal
+          onClose={() => setPickedCard(null)}
+          onSaved={refetch}
+          createCardId={pickedCard.cardId}
+          createCardName={pickedCard.cardName}
+          createCardNumber={pickedCard.cardNumber}
+          createCurrentCompany={pickedCard.currentCompany}
+          createCurrentGrade={pickedCard.currentGrade}
+        />
+      )}
+    </>
+  );
 
   if (loading) {
     return (
@@ -1428,7 +2062,7 @@ function TrackedArbitragePage() {
 
   return (
     <div style={{ padding: "32px 40px", maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 20 }}>
         <div
           style={{
             fontSize: 10,
@@ -1448,11 +2082,11 @@ function TrackedArbitragePage() {
             marginBottom: 6,
           }}
         >
-          Tracked Regrades
+          Arbitrage
         </h1>
         <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-          Cards you&apos;re researching but don&apos;t own — see the price
-          ladder before deciding whether to chase a grade.
+          Cards you&apos;re tracking for a regrade — owned or not — with the
+          math on grade upgrades, kept live against current pricing.
         </p>
       </div>
 
@@ -1478,29 +2112,56 @@ function TrackedArbitragePage() {
           <div
             style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 16 }}
           >
-            Find a card and click &quot;Track for regrade&quot; on its detail
-            page.
+            Add a card — search for one, or pull it straight from your inventory
+            — to start seeing the math on grade upgrades.
           </div>
-          <a
-            href='/cards'
+          <div
             style={{
-              display: "inline-block",
-              padding: "10px 20px",
-              borderRadius: 8,
-              background: "var(--gold)",
-              color: "var(--charcoal, #0E0E12)",
-              fontSize: 12,
-              fontWeight: 700,
-              textDecoration: "none",
+              display: "flex",
+              gap: 8,
+              justifyContent: "center",
             }}
           >
-            Browse cards
-          </a>
+            <button
+              onClick={() => setAddOpen(true)}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 8,
+                border: "none",
+                background: "var(--gold)",
+                color: "var(--charcoal, #0E0E12)",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              + Add card to track
+            </button>
+            <button
+              onClick={() => setRecommendedOpen(true)}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              See top 10 recommended
+            </button>
+          </div>
         </div>
       ) : (
         <>
+          {actionButtons}
+
           {summary && (
-            <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+            <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
               <TrackedKpiCard
                 label='Tracked'
                 value={String(summary.totalTracked)}
@@ -1518,8 +2179,46 @@ function TrackedArbitragePage() {
             </div>
           )}
 
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              marginBottom: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <span
+              style={{ fontSize: 11, color: "var(--text-dim)", marginRight: 2 }}
+            >
+              Sort:
+            </span>
+            {TRACKED_SORT_OPTIONS.map((opt) => {
+              const active = sortKey === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => setSortKey(opt.key)}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 100,
+                    border: `1px solid ${active ? "var(--gold)" : "var(--border)"}`,
+                    background: active ? "rgba(201,168,76,0.1)" : "transparent",
+                    color: active ? "var(--gold)" : "var(--text-secondary)",
+                    fontSize: 11,
+                    fontWeight: active ? 700 : 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {items.map((item) => (
+            {sortTracked(items, sortKey).map((item) => (
               <TrackedOpportunityRow
                 key={item.id}
                 tracked={item}
@@ -1530,14 +2229,7 @@ function TrackedArbitragePage() {
         </>
       )}
 
-      {editing && (
-        <TrackRegradeModal
-          existing={editing}
-          onClose={() => setEditing(null)}
-          onSaved={refetch}
-          onDeleted={refetch}
-        />
-      )}
+      {overlays}
     </div>
   );
 }
@@ -1715,9 +2407,18 @@ function TrackedOpportunityRow({
 // gating for Tracked is a deliberate later step, not an oversight; see the
 // note where this function is called below.
 
+// ─── Outer wrapper ──────────────────────────────────────────────────────────
+//
+// With the flag off, this renders exactly what the page always rendered:
+// OwnedArbitragePage, wrapped in the SAME regrade_arbitrage plan gate it
+// always had. With the flag on, TrackedArbitragePage IS the whole screen —
+// no Inventory/Tracked switcher. The owned-card ranking isn't gone, it's
+// reachable on demand via the "Recommended" button inside
+// TrackedArbitragePage instead of being a persistent second view. Per-plan
+// gating for Tracked is a deliberate later step, not an oversight.
+
 function GradingArbitragePage() {
   const canTrackRegrades = useFlag("regrade_tracker");
-  const [subTab, setSubTab] = useState<"inventory" | "tracked">("inventory");
 
   if (!canTrackRegrades) {
     return (
@@ -1731,53 +2432,7 @@ function GradingArbitragePage() {
     );
   }
 
-  return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 40px 0" }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: -8 }}>
-        {[
-          { value: "inventory" as const, label: "Inventory" },
-          { value: "tracked" as const, label: "Tracked" },
-        ].map((t) => {
-          const isActive = subTab === t.value;
-          return (
-            <button
-              key={t.value}
-              onClick={() => setSubTab(t.value)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 100,
-                border: `1px solid ${isActive ? "var(--gold)" : "var(--border)"}`,
-                background: isActive ? "var(--gold)" : "var(--surface)",
-                color: isActive
-                  ? "var(--charcoal, #0E0E12)"
-                  : "var(--text-secondary)",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div style={{ margin: "0 -40px" }}>
-        {subTab === "inventory" ? (
-          <FeatureGate
-            feature='regrade_arbitrage'
-            upgradeTo='collector'
-            featureLabel='regrade arbitrage'
-          >
-            <OwnedArbitragePage />
-          </FeatureGate>
-        ) : (
-          <TrackedArbitragePage />
-        )}
-      </div>
-    </div>
-  );
+  return <TrackedArbitragePage />;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
