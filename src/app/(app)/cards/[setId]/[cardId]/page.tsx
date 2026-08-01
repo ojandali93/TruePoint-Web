@@ -301,12 +301,15 @@ export default function CardDetailPage({
       </div>
 
       {activeTab === "grading" && (
-        <GradingAnalysis
-          rawPrice={rawPrice}
-          gradedPrices={gradedPrices}
-          cardId={cardId}
-          collectionId={activeCollectionId}
-        />
+        <>
+          <GradeTenComparison gradedPrices={gradedPrices} />
+          <GradingAnalysis
+            rawPrice={rawPrice}
+            gradedPrices={gradedPrices}
+            cardId={cardId}
+            collectionId={activeCollectionId}
+          />
+        </>
       )}
 
       {activeTab === "prices" && (
@@ -359,6 +362,90 @@ export default function CardDetailPage({
 }
 
 // ─── Grading Analysis (with ROI calculator) ──────────────────────────────────
+
+// ─── Grade 10 Comparison ────────────────────────────────────────────────────
+//
+// "What does a 10 go for, company to company." Takes the same gradedPrices
+// the page already fetched — no separate request. Sorted by price
+// descending, since seeing which company's 10 commands the highest price
+// is the actual point of comparing them.
+
+function GradeTenComparison({
+  gradedPrices,
+}: {
+  gradedPrices: GradedPriceRow[];
+}) {
+  const COMPANY_COLORS: Record<string, string> = {
+    PSA: "#C9A84C",
+    BGS: "#378ADD",
+    CGC: "#3DAA6E",
+    TAG: "#D85A30",
+    SGC: "#7F77DD",
+  };
+
+  const tens = gradedPrices
+    .filter((p) => p.grade === "10")
+    .sort((a, b) => b.marketPrice - a.marketPrice);
+
+  if (tens.length < 2) return null;
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div
+        style={{
+          fontSize: 10,
+          color: "var(--text-dim)",
+          letterSpacing: "0.08em",
+          fontFamily: "DM Mono, monospace",
+          marginBottom: 10,
+        }}
+      >
+        GRADE 10 COMPARISON
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        {tens.map((t) => {
+          const color = COMPANY_COLORS[t.company] ?? "#8A8FA0";
+          return (
+            <div
+              key={t.company}
+              style={{
+                flex: 1,
+                textAlign: "center",
+                padding: "14px 10px",
+                borderRadius: 10,
+                background: "var(--surface)",
+                border: `1px solid ${color}55`,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color,
+                  letterSpacing: "0.06em",
+                  fontFamily: "DM Mono, monospace",
+                }}
+              >
+                {t.company} 10
+              </div>
+              <div
+                style={{
+                  fontSize: 17,
+                  fontWeight: 500,
+                  color: "var(--text-primary)",
+                  marginTop: 4,
+                  fontFamily: "DM Mono, monospace",
+                }}
+              >
+                ${t.marketPrice.toFixed(0)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function GradingAnalysis({
   rawPrice,
