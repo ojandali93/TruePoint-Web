@@ -3610,6 +3610,22 @@ export default function AdminPage() {
           >
             Outreach CRM ↗
           </button>
+          <button
+            onClick={() => router.push("/admin/notification-test")}
+            style={{
+              padding: "7px 14px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Notification Testing ↗
+          </button>
         </div>
       </div>
       <div style={{ padding: "28px 40px", maxWidth: 1200, margin: "0 auto" }}>
