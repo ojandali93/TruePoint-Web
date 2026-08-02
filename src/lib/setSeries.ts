@@ -73,13 +73,41 @@ export function getSetLanguage(
 export function classifySeries(name: string): SeriesName {
   const n = name ?? "";
 
-  // Main eras — match the systematic TCGAPIs prefixes
-  if (/^ME\d/.test(n) || /^ME[:E]/.test(n) || n.startsWith("ME "))
+  // Main eras — match the systematic TCGAPIs prefixes.
+  //
+  // English sets spell the era out in full: "ME01", "SWSH01", "SM -".
+  // Japanese sets use short codes instead, always colon-separated from the
+  // display name, confirmed against real data:
+  //   MEGA:  "M6: Storm Emeralda", "M6a: ...", "m1S: Mega Symphonia"
+  //          (case varies), "MEZ:"/"MEE:"/"MEM:" (starter subproducts),
+  //          "MBG:"/"MBD:" (another starter-product short code)
+  //   SV:    "SV11B: Black Bolt", "SV10: ..." — already matched by the
+  //          English SV rule below, since it's the same "SV" + digit shape
+  // SWSH/SM Japan equivalents ("s12a"-style, "sm"-style) aren't confirmed
+  // against a real sample yet — extrapolated from the same "short code +
+  // colon" convention the MEGA/SV examples establish, not verified letter
+  // for letter. Flag if these look wrong once real Sword & Shield / Sun &
+  // Moon era Japanese sets are checked against them.
+  if (
+    /^ME\d/.test(n) ||
+    n.startsWith("ME ") ||
+    /^m[a-z0-9]{0,4}:/i.test(n) // Japan: M6:, M6a:, m1S:, MEZ:, MBG:, ...
+  )
     return SERIES.MEGA;
   if (/^SV\d/.test(n) || n.startsWith("SV:") || n.startsWith("SVE:"))
     return SERIES.SV;
-  if (/^SWSH\d/.test(n) || n.startsWith("SWSH:")) return SERIES.SWSH;
-  if (n.startsWith("SM -") || n.startsWith("SM:") || /^SM\s/.test(n))
+  if (
+    /^SWSH\d/.test(n) ||
+    n.startsWith("SWSH:") ||
+    /^s\d[a-z0-9]{0,3}:/i.test(n) // Japan (extrapolated): s12a:, s4a:, ...
+  )
+    return SERIES.SWSH;
+  if (
+    n.startsWith("SM -") ||
+    n.startsWith("SM:") ||
+    /^SM\s/.test(n) ||
+    /^sm\d[a-z0-9+]{0,3}:/i.test(n) // Japan (extrapolated): sm1:, sm7+:, ...
+  )
     return SERIES.SM;
 
   // Special families — each its own category
