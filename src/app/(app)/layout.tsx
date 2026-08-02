@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "../../lib/supabase";
+import { deactivateCurrentDevice } from "../../lib/deviceTracking";
 import { ROUTES } from "../../constants/routes";
 import GlobalSearch from "@/components/layout/GlobalSearch";
 import {
@@ -665,6 +666,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [pathname, router, supabase]);
 
   const handleSignOut = async () => {
+    // Explicit and synchronous, ahead of signOut() itself — same reasoning
+    // as mobile: this device should stop being "this account's device" the
+    // moment sign-out is chosen, not depend on a reactive effect racing
+    // against the redirect that follows. Best-effort: never block sign-out.
+    await deactivateCurrentDevice().catch(() => {});
     await supabase.auth.signOut();
     router.replace(ROUTES.HOME);
   };
