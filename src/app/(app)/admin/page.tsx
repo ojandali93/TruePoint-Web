@@ -2933,6 +2933,12 @@ function PlatformSettings() {
             endpoint: "/sync/tcgapis/prices",
             color: "#10B981",
           },
+          {
+            label: "Sync Set Images",
+            desc: "Fill missing set logos/symbols from pokemontcg.io — only fills blanks, never overwrites",
+            endpoint: "/sync/set-images",
+            color: "#EC4899",
+          },
         ].map((a) => (
           <div
             key={a.label}
