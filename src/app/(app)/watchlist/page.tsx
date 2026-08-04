@@ -785,6 +785,7 @@ function ItemOverlay({
   onChanged: () => void;
 }) {
   const isCreate = !!pendingPick;
+  const router = useRouter();
 
   const [gradeChoice, setGradeChoice] = useState<"raw" | "graded" | null>(
     pendingPick?.currentGradingCompany ? "graded" : null,
@@ -985,6 +986,52 @@ function ItemOverlay({
           )}
         </div>
       </div>
+
+      {/* View details — edit mode only; nothing to navigate to yet during
+          create, the item doesn't exist as a watchlist row. */}
+      {!isCreate && existingItem && (
+        <button
+          onClick={() => {
+            onClose();
+            if (
+              existingItem.kind === "card" &&
+              existingItem.cardId &&
+              existingItem.setId
+            ) {
+              router.push(
+                `/cards/${existingItem.setId}/${existingItem.cardId}`,
+              );
+            } else if (
+              existingItem.kind === "product" &&
+              existingItem.productId
+            ) {
+              router.push(`/products/${existingItem.productId}`);
+            }
+          }}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            padding: "10px 0",
+            marginBottom: 16,
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "transparent",
+            color: "var(--text-primary)",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          {existingItem.kind === "card"
+            ? "View card details"
+            : "View product details"}{" "}
+          →
+        </button>
+      )}
 
       {/* Raw / graded step */}
       {needsGradeStep && (

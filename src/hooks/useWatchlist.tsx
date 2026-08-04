@@ -21,6 +21,7 @@ export interface WatchlistItem {
   kind: "card" | "product";
   cardId: string | null;
   productId: string | null;
+  setId: string | null;
   targetCompany: string | null;
   targetGrade: string | null;
   name: string;
