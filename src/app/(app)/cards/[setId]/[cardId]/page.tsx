@@ -17,10 +17,11 @@
  * file's table-style sections in favor of cleaner inline panels.
  */
 
-import { useMemo, useState, use } from "react";
+import { useMemo, useState, useEffect, use } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
+import api from "../../../../../lib/api";
 import { useCollections } from "../../../../../context/CollectionContext";
 import { useFlag } from "../../../../../context/PlanContext";
 import {
@@ -302,7 +303,7 @@ export default function CardDetailPage({
 
       {activeTab === "grading" && (
         <>
-          <GradeTenComparison gradedPrices={gradedPrices} />
+          <GradeTenComparison gradedPrices={gradedPrices} cardId={cardId} />
           <GradingAnalysis
             rawPrice={rawPrice}
             gradedPrices={gradedPrices}
@@ -370,24 +371,94 @@ export default function CardDetailPage({
 // descending, since seeing which company's 10 commands the highest price
 // is the actual point of comparing them.
 
-function GradeTenComparison({
-  gradedPrices,
-}: {
-  gradedPrices: GradedPriceRow[];
-}) {
-  const COMPANY_COLORS: Record<string, string> = {
-    PSA: "#C9A84C",
-    BGS: "#378ADD",
-    CGC: "#3DAA6E",
-    TAG: "#D85A30",
-    SGC: "#7F77DD",
+// ─── Grade 10 Comparison ────────────────────────────────────────────────────
+//
+// "What does a 10 go for, company to company." Always shows all 4 major
+// companies (PSA, BGS, TAG, CGC) in a 2x2 grid, even ones with no data for
+// this card (shown as "—") — a stable, always-present set of 4 slots
+// rather than "whichever happen to have data," so the on/off toggle below
+// means something consistent from card to card. Each company can be
+// toggled off via the chips above — persisted to localStorage (not
+// per-card; a standing preference), defaulting to all 4 on. Tapping a
+// company with real data expands a compact price-history chart for that
+// exact company+grade — card_price_history has been snapshotting graded
+// prices daily all along, this is the first UI that reads it back out.
+
+const MAJOR_COMPANIES = ["PSA", "BGS", "TAG", "CGC"] as const;
+type MajorCompany = (typeof MAJOR_COMPANIES)[number];
+const COMPANY_COLORS: Record<string, string> = {
+  PSA: "#C9A84C",
+  BGS: "#378ADD",
+  CGC: "#3DAA6E",
+  TAG: "#D85A30",
+  SGC: "#7F77DD",
+};
+const TOGGLE_STORAGE_KEY = "truepoint-grade-ten-comparison-companies";
+
+function useCompanyToggle(): [Set<MajorCompany>, (c: MajorCompany) => void] {
+  const [enabled, setEnabled] = useState<Set<MajorCompany>>(
+    new Set(MAJOR_COMPANIES),
+  );
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(TOGGLE_STORAGE_KEY);
+      if (!raw) return;
+      const parsed: string[] = JSON.parse(raw);
+      const valid = parsed.filter((c): c is MajorCompany =>
+        (MAJOR_COMPANIES as readonly string[]).includes(c),
+      );
+      if (valid.length > 0) setEnabled(new Set(valid));
+    } catch {
+      // best-effort — keep the all-enabled default
+    }
+  }, []);
+
+  const toggle = (company: MajorCompany) => {
+    setEnabled((prev) => {
+      const next = new Set(prev);
+      if (next.has(company)) {
+        if (next.size === 1) return prev; // never allow zero
+        next.delete(company);
+      } else {
+        next.add(company);
+      }
+      try {
+        localStorage.setItem(
+          TOGGLE_STORAGE_KEY,
+          JSON.stringify(Array.from(next)),
+        );
+      } catch {
+        // best-effort
+      }
+      return next;
+    });
   };
 
-  const tens = gradedPrices
-    .filter((p) => p.grade === "10")
-    .sort((a, b) => b.marketPrice - a.marketPrice);
+  return [enabled, toggle];
+}
 
-  if (tens.length < 2) return null;
+function GradeTenComparison({
+  gradedPrices,
+  cardId,
+}: {
+  gradedPrices: GradedPriceRow[];
+  cardId: string;
+}) {
+  const [enabledCompanies, toggleCompany] = useCompanyToggle();
+  const [expanded, setExpanded] = useState<MajorCompany | null>(null);
+
+  const tens = MAJOR_COMPANIES.map((company) => {
+    const match = gradedPrices.find(
+      (p) => p.grade === "10" && p.company === company,
+    );
+    return { company, price: match?.marketPrice ?? null };
+  });
+
+  const anyData = tens.some((t) => t.price != null);
+  if (!anyData) return null;
+
+  const visible = tens.filter((t) => enabledCompanies.has(t.company));
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -402,47 +473,264 @@ function GradeTenComparison({
       >
         GRADE 10 COMPARISON
       </div>
-      <div style={{ display: "flex", gap: 10 }}>
-        {tens.map((t) => {
-          const color = COMPANY_COLORS[t.company] ?? "#8A8FA0";
+
+      {/* Toggle chips */}
+      <div
+        style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}
+      >
+        {MAJOR_COMPANIES.map((company) => {
+          const on = enabledCompanies.has(company);
+          const color = COMPANY_COLORS[company] ?? "#8A8FA0";
           return (
-            <div
-              key={t.company}
+            <button
+              key={company}
+              onClick={() => toggleCompany(company)}
               style={{
-                flex: 1,
-                textAlign: "center",
-                padding: "14px 10px",
-                borderRadius: 10,
-                background: "var(--surface)",
-                border: `1px solid ${color}55`,
+                padding: "4px 10px",
+                borderRadius: 100,
+                border: `1px solid ${on ? color : "var(--border)"}`,
+                background: on ? `${color}22` : "transparent",
+                color: on ? color : "var(--text-dim)",
+                fontSize: 10,
+                fontWeight: on ? 700 : 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
               }}
             >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color,
-                  letterSpacing: "0.06em",
-                  fontFamily: "DM Mono, monospace",
-                }}
-              >
-                {t.company} 10
-              </div>
-              <div
-                style={{
-                  fontSize: 17,
-                  fontWeight: 500,
-                  color: "var(--text-primary)",
-                  marginTop: 4,
-                  fontFamily: "DM Mono, monospace",
-                }}
-              >
-                ${t.marketPrice.toFixed(0)}
-              </div>
-            </div>
+              {company}
+            </button>
           );
         })}
       </div>
+
+      {visible.length === 0 ? (
+        <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          All companies hidden — click a chip above to show one.
+        </div>
+      ) : (
+        <div
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}
+        >
+          {visible.map((t) => {
+            const color = COMPANY_COLORS[t.company] ?? "#8A8FA0";
+            const isExpanded = expanded === t.company;
+            return (
+              <div
+                key={t.company}
+                style={{
+                  gridColumn: isExpanded ? "1 / -1" : undefined,
+                  borderRadius: 10,
+                  background: "var(--surface)",
+                  border: `1px solid ${color}55`,
+                  overflow: "hidden",
+                  cursor: t.price != null ? "pointer" : "default",
+                }}
+                onClick={() =>
+                  t.price != null &&
+                  setExpanded((cur) => (cur === t.company ? null : t.company))
+                }
+              >
+                <div style={{ textAlign: "center", padding: "14px 10px" }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color,
+                      letterSpacing: "0.06em",
+                      fontFamily: "DM Mono, monospace",
+                    }}
+                  >
+                    {t.company} 10
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 17,
+                      fontWeight: 500,
+                      color:
+                        t.price != null
+                          ? "var(--text-primary)"
+                          : "var(--text-dim)",
+                      marginTop: 4,
+                      fontFamily: "DM Mono, monospace",
+                    }}
+                  >
+                    {t.price != null ? `$${t.price.toFixed(0)}` : "—"}
+                  </div>
+                  {t.price != null && (
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: "var(--text-dim)",
+                        marginTop: 2,
+                      }}
+                    >
+                      {isExpanded ? "Hide history" : "Click for history"}
+                    </div>
+                  )}
+                </div>
+                {isExpanded && (
+                  <GradedHistoryPanel
+                    cardId={cardId}
+                    company={t.company}
+                    grade='10'
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GradedHistoryPanel({
+  cardId,
+  company,
+  grade,
+}: {
+  cardId: string;
+  company: string;
+  grade: string;
+}) {
+  const [range, setRange] = useState<"7d" | "30d" | "90d">("30d");
+  const [loading, setLoading] = useState(true);
+  const [points, setPoints] = useState<{ date: string; price: number }[]>([]);
+  const [isFallback, setIsFallback] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api
+      .get<{
+        data: {
+          series: {
+            variant: string;
+            points: { date: string; price: number }[];
+          }[];
+          isFallbackToCurrentPrice?: boolean;
+        };
+      }>(`/cards/${cardId}/price-history/graded`, {
+        params: { company, grade, range },
+      })
+      .then((res) => {
+        if (cancelled) return;
+        setPoints(res.data.data.series?.[0]?.points ?? []);
+        setIsFallback(!!res.data.data.isFallbackToCurrentPrice);
+      })
+      .catch(() => {
+        if (!cancelled) setPoints([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cardId, company, grade, range]);
+
+  const color = COMPANY_COLORS[company] ?? "#8A8FA0";
+  const width = 400;
+  const height = 56;
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--border)",
+        padding: 12,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 8,
+        }}
+      >
+        <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+          {loading
+            ? "Loading…"
+            : isFallback
+              ? "Only today's price — not enough history yet"
+              : `${points.length} snapshot${points.length === 1 ? "" : "s"}`}
+        </span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["7d", "30d", "90d"] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              style={{
+                padding: "2px 8px",
+                borderRadius: 6,
+                border: "none",
+                background: range === r ? `${color}22` : "transparent",
+                color: range === r ? color : "var(--text-dim)",
+                fontSize: 9,
+                fontWeight: range === r ? 700 : 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {r.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Loading…</div>
+      ) : points.length < 2 ? (
+        <div style={{ fontSize: 12, color: "var(--text-primary)" }}>
+          {points.length === 1
+            ? `Current: $${points[0].price.toFixed(2)}`
+            : "No data available."}
+        </div>
+      ) : (
+        <>
+          {(() => {
+            const prices = points.map((p) => p.price);
+            const min = Math.min(...prices);
+            const max = Math.max(...prices);
+            const range2 = max - min || 1;
+            const coords = points.map((p, i) => {
+              const x = (i / (points.length - 1)) * width;
+              const y = height - ((p.price - min) / range2) * (height - 8) - 4;
+              return `${x},${y}`;
+            });
+            return (
+              <svg
+                width='100%'
+                height={height}
+                viewBox={`0 0 ${width} ${height}`}
+                preserveAspectRatio='none'
+              >
+                <polyline
+                  points={coords.join(" ")}
+                  fill='none'
+                  stroke={color}
+                  strokeWidth={1.5}
+                />
+              </svg>
+            );
+          })()}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: 4,
+            }}
+          >
+            <span style={{ fontSize: 9, color: "var(--text-dim)" }}>
+              ${points[0].price.toFixed(0)}
+            </span>
+            <span style={{ fontSize: 9, color: "var(--text-dim)" }}>
+              ${points[points.length - 1].price.toFixed(0)}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
