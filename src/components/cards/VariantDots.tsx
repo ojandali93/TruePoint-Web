@@ -17,6 +17,18 @@
 
 import { type CardVariantPrice } from "../../hooks/useSetGrid";
 
+// Market price is TCGPlayer's own weighted calc — needs enough recent
+// SALES history, not just listings, so it's null more often than you'd
+// expect for anything thin-traded (expensive, brand-new, rare). Falling
+// back through mid → low → high means a card with real, known pricing
+// still shows a number here instead of nothing, even when TCGPlayer's own
+// market figure isn't confident enough yet to publish. This is a display
+// fallback only — market stays whatever it actually is in the data; this
+// never gets written back anywhere.
+function displayPrice(v: CardVariantPrice): number | null {
+  return v.market ?? v.mid ?? v.low ?? v.high;
+}
+
 // ─── Dots ─────────────────────────────────────────────────────────────────────
 
 export function VariantDots({
@@ -31,20 +43,23 @@ export function VariantDots({
   if (variants.length === 0) return null;
   return (
     <div style={{ display: "flex", gap }}>
-      {variants.map((v) => (
-        <span
-          key={`${v.variant}-${v.cardId}`}
-          title={`${v.label}${v.market != null ? ` — $${v.market.toFixed(2)}` : ""}`}
-          style={{
-            width: size,
-            height: size,
-            borderRadius: "50%",
-            background: v.color,
-            display: "inline-block",
-            flexShrink: 0,
-          }}
-        />
-      ))}
+      {variants.map((v) => {
+        const price = displayPrice(v);
+        return (
+          <span
+            key={`${v.variant}-${v.cardId}`}
+            title={`${v.label}${price != null ? ` — $${price.toFixed(2)}` : ""}`}
+            style={{
+              width: size,
+              height: size,
+              borderRadius: "50%",
+              background: v.color,
+              display: "inline-block",
+              flexShrink: 0,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -59,56 +74,59 @@ export function VariantPriceList({
   if (variants.length === 0) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {variants.map((v) => (
-        <div
-          key={`${v.variant}-${v.cardId}`}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 6,
-            fontSize: 10,
-            color: "var(--text-secondary)",
-          }}
-        >
+      {variants.map((v) => {
+        const price = displayPrice(v);
+        return (
           <div
+            key={`${v.variant}-${v.cardId}`}
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 4,
-              minWidth: 0,
+              justifyContent: "space-between",
+              gap: 6,
+              fontSize: 10,
+              color: "var(--text-secondary)",
             }}
           >
-            <span
+            <div
               style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: v.color,
-                flexShrink: 0,
-              }}
-            />
-            <span
-              style={{
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                minWidth: 0,
               }}
             >
-              {v.label}
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: v.color,
+                  flexShrink: 0,
+                }}
+              />
+              <span
+                style={{
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {v.label}
+              </span>
+            </div>
+            <span
+              style={{
+                fontFamily: "DM Mono, monospace",
+                color: price != null ? "var(--green)" : "var(--text-dim)",
+                flexShrink: 0,
+              }}
+            >
+              {price != null ? `$${price.toFixed(2)}` : "—"}
             </span>
           </div>
-          <span
-            style={{
-              fontFamily: "DM Mono, monospace",
-              color: v.market != null ? "var(--green)" : "var(--text-dim)",
-              flexShrink: 0,
-            }}
-          >
-            {v.market != null ? `$${v.market.toFixed(2)}` : "—"}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -117,7 +135,7 @@ export function VariantPriceList({
 
 export function priceRangeText(variants: CardVariantPrice[]): string {
   const prices = variants
-    .map((v) => v.market)
+    .map(displayPrice)
     .filter((p): p is number => p != null);
   if (prices.length === 0) return "—";
   const min = Math.min(...prices);

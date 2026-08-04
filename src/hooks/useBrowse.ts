@@ -45,6 +45,8 @@ export interface CardPriceRow {
   variant: string;
   market: number | null;
   low: number | null;
+  mid: number | null;
+  high: number | null;
   source: string;
 }
 

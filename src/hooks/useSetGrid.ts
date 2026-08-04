@@ -44,8 +44,16 @@ import {
 export interface CardVariantPrice {
   /** Global variant key (looks up color/label in VARIANTS registry). */
   variant: string;
-  /** Market price for this specific (card, variant) cell. */
+  /** Market price for this specific (card, variant) cell. Null more often
+   *  than you'd expect — TCGPlayer's own weighted calc needs enough recent
+   *  sales history, not just listings, so thin-traded cards (expensive,
+   *  brand-new, rare) frequently have real low/mid/high but no market
+   *  figure. Display code should fall back through mid → low → high
+   *  rather than showing nothing when this is null but the others aren't. */
   market: number | null;
+  mid: number | null;
+  low: number | null;
+  high: number | null;
   /** Variant accent color (from registry). */
   color: string;
   /** Display label (e.g. "Holofoil", "Poké Ball"). */
@@ -151,6 +159,9 @@ export function buildGrid(
           merged.set(patternKey, {
             variant: patternKey,
             market: realRow.market,
+            mid: realRow.mid,
+            low: realRow.low,
+            high: realRow.high,
             color: variantColor(patternKey),
             label: variantLabel(patternKey),
             cardId: card.id,
@@ -164,6 +175,9 @@ export function buildGrid(
           merged.set(r.variant, {
             variant: r.variant,
             market: r.market,
+            mid: r.mid,
+            low: r.low,
+            high: r.high,
             color: variantColor(r.variant),
             label: variantLabel(r.variant),
             cardId: card.id,
