@@ -76,9 +76,11 @@ export default function NotificationTestPage() {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<TestSendResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
 
   const runSearch = async (q: string) => {
     setQuery(q);
+    setSearchErr(null);
     if (q.trim().length < 2) {
       setSearchResults([]);
       return;
@@ -89,8 +91,9 @@ export default function NotificationTestPage() {
         `/admin/users?search=${encodeURIComponent(q)}&limit=10`,
       );
       setSearchResults(res.data.data.users ?? []);
-    } catch {
+    } catch (e) {
       setSearchResults([]);
+      setSearchErr(e instanceof Error ? e.message : "User search failed");
     } finally {
       setSearching(false);
     }
@@ -257,6 +260,22 @@ export default function NotificationTestPage() {
                 </div>
               )}
 
+              {searchErr && (
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    marginTop: 8,
+                    borderRadius: 8,
+                    background: "rgba(232,95,95,0.1)",
+                    border: "1px solid #e85f5f55",
+                    fontSize: 12,
+                    color: "#e85f5f",
+                  }}
+                >
+                  {searchErr}
+                </div>
+              )}
+
               {searchResults.length > 0 && (
                 <div
                   style={{
@@ -297,6 +316,21 @@ export default function NotificationTestPage() {
                   ))}
                 </div>
               )}
+
+              {!searching &&
+                !searchErr &&
+                query.trim().length >= 2 &&
+                searchResults.length === 0 && (
+                  <div
+                    style={{
+                      padding: "12px 0",
+                      fontSize: 12,
+                      color: "var(--text-dim)",
+                    }}
+                  >
+                    No users match &quot;{query}&quot;.
+                  </div>
+                )}
             </>
           )}
         </div>
