@@ -103,6 +103,26 @@ export default function SetsPage() {
         <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
           {gameSetCount} sets across all series
         </p>
+        <button
+          onClick={() => router.push("/chase-cards")}
+          style={{
+            marginTop: 12,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 14px",
+            borderRadius: 8,
+            border: "1px solid var(--gold)",
+            background: "rgba(201,169,78,0.1)",
+            color: "var(--gold)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          ★ Chase Cards — every set&apos;s main chase cards, in one place
+        </button>
       </div>
 
       <div
