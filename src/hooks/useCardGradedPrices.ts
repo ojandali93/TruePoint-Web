@@ -1,7 +1,11 @@
 "use client";
 
 /**
- * useCardGradedPrices — fetches PokeTrace-sourced graded prices for a card.
+ * useCardGradedPrices — fetches graded prices for a card. Despite the name/
+ * history, rows can now come from either PokeTrace (sub-10, always) or
+ * PriceCharting (10-tier + Black Label, when the pricecharting_pricing flag
+ * is on for the requesting user — see CLAUDE.md §6) — check `source` per
+ * row, never assume PokeTrace.
  *
  * Backend: GET /cards/:cardId/graded-prices
  *   → { data: { cardId, cached, prices: GradedPriceRow[] } }
@@ -21,6 +25,10 @@ export interface GradedPriceRow {
   grade: string;
   marketPrice: number;
   fetchedAt: string;
+  source: string;
+  // PriceCharting attribution linkback (CLAUDE.md license note) — null for
+  // every other source. See components/cards/PriceChartingAttribution.tsx.
+  sourceProductId: string | null;
 }
 
 export interface GradedPricesResponse {

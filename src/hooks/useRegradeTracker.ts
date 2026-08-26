@@ -28,6 +28,10 @@ export interface LadderEntry {
   grade: string;
   gradeValue: number;
   price: number;
+  source: string;
+  // PriceCharting attribution linkback (CLAUDE.md license note) — null for
+  // every other source. See components/cards/PriceChartingAttribution.tsx.
+  sourceProductId: string | null;
 }
 
 export interface GradeLadderResult {

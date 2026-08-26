@@ -30,6 +30,7 @@ import {
 } from "../../../../../hooks/useCardDetail";
 import { useCardGradedPrices } from "../../../../../hooks/useCardGradedPrices";
 import type { GradedPriceRow } from "../../../../../hooks/useCardGradedPrices";
+import { PriceChartingAttribution } from "../../../../../components/cards/PriceChartingAttribution";
 import { useTrackedRegrades } from "../../../../../hooks/useRegradeTracker";
 import {
   patternKeyFromName,
@@ -580,6 +581,17 @@ function GradeTenComparison({
           })}
         </div>
       )}
+      {tens.some((t) => t.price != null) &&
+        gradedPrices.some((p) => p.grade === "10" && p.source === "pricecharting") && (
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+            <PriceChartingAttribution
+              productId={
+                gradedPrices.find((p) => p.grade === "10" && p.source === "pricecharting")
+                  ?.sourceProductId
+              }
+            />
+          </div>
+        )}
     </div>
   );
 }
@@ -762,13 +774,18 @@ function GradingAnalysis({
   };
 
   // Order companies canonically, sort grades descending within each
-  const COMPANY_ORDER = ["PSA", "BGS", "CGC", "TAG", "SGC"];
+  // ACE added 2026-08-25 — see constants/grading.ts header note. This is the
+  // full graded-price list (all companies data exists for), NOT the
+  // curated MAJOR_COMPANIES 4-slot widget above — that one is a deliberate
+  // documented design choice and is left untouched.
+  const COMPANY_ORDER = ["PSA", "BGS", "CGC", "TAG", "SGC", "ACE"];
   const COMPANY_COLORS: Record<string, string> = {
     PSA: "#C9A84C",
     BGS: "#378ADD",
     CGC: "#3DAA6E",
     TAG: "#D85A30",
     SGC: "#9B59B6",
+    ACE: "#2FA8A0",
   };
 
   const byCompany = useMemo(() => {
@@ -1082,7 +1099,7 @@ function GradingAnalysis({
                   <QuickAddGradedInventory
                     cardId={cardId}
                     gradingCompany={
-                      company as "PSA" | "BGS" | "CGC" | "SGC" | "TAG"
+                      company as "PSA" | "BGS" | "CGC" | "SGC" | "TAG" | "ACE"
                     }
                     grade={r.grade}
                     collectionId={collectionId}
@@ -1102,10 +1119,21 @@ function GradingAnalysis({
           color: "var(--text-dim)",
           lineHeight: 1.6,
           background: "var(--surface-2)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
         }}
       >
-        ROI assumes the raw card sells at TCGPlayer market and you receive the
-        graded copy at the displayed PokeTrace price after fees.
+        <span>
+          ROI assumes the raw card sells at TCGPlayer market and you receive
+          the graded copy at the displayed price after fees.
+        </span>
+        {gradedPrices.some((p) => p.source === "pricecharting") && (
+          <PriceChartingAttribution
+            productId={gradedPrices.find((p) => p.source === "pricecharting")?.sourceProductId}
+          />
+        )}
       </div>
     </div>
   );
@@ -1244,14 +1272,28 @@ function GradedPricesPanel({
     <div>
       <div
         style={{
-          fontSize: 11,
-          color: "var(--text-dim)",
-          letterSpacing: "0.08em",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 12,
           marginBottom: 12,
-          fontFamily: "DM Mono, monospace",
         }}
       >
-        GRADED PRICES (POKETRACE)
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--text-dim)",
+            letterSpacing: "0.08em",
+            fontFamily: "DM Mono, monospace",
+          }}
+        >
+          GRADED PRICES
+        </div>
+        {gradedPrices.some((p) => p.source === "pricecharting") && (
+          <PriceChartingAttribution
+            productId={gradedPrices.find((p) => p.source === "pricecharting")?.sourceProductId}
+          />
+        )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {gradedPrices.map((g, i) => (

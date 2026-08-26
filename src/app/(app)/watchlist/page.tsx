@@ -30,6 +30,7 @@ import {
   useGradeLadder,
   type LadderEntry,
 } from "../../../hooks/useRegradeTracker";
+import { PriceChartingAttribution } from "../../../components/cards/PriceChartingAttribution";
 
 // ─── Shared bits ────────────────────────────────────────────────────────────
 
@@ -1257,6 +1258,13 @@ function GradeGridPicker({
           </div>
         </div>
       ))}
+      {rows.some((r) => r.source === "pricecharting") && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+          <PriceChartingAttribution
+            productId={rows.find((r) => r.source === "pricecharting")?.sourceProductId}
+          />
+        </div>
+      )}
     </div>
   );
 }

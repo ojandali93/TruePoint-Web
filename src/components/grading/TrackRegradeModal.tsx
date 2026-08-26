@@ -24,6 +24,7 @@ import {
   type TrackedRegradeRow,
   type TrackedRegradeStatus,
 } from "../../hooks/useRegradeTracker";
+import { PriceChartingAttribution } from "../cards/PriceChartingAttribution";
 
 const COMPANY_COLORS: Record<string, string> = {
   PSA: "#C9A84C",
@@ -667,6 +668,14 @@ function GradeGrid({
           </div>
         </div>
       ))}
+      {(() => {
+        const pcEntry = ladder.data?.ladder.find((e) => e.source === "pricecharting");
+        return pcEntry ? (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+            <PriceChartingAttribution productId={pcEntry.sourceProductId} />
+          </div>
+        ) : null;
+      })()}
     </div>
   );
 }

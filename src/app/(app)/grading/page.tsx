@@ -11,6 +11,7 @@ import AIGradingPage from "./ai/page";
 import { FeatureGate } from "@/components/PlanGuards";
 import { usePlan, useFlag } from "@/context/PlanContext";
 import { TrackRegradeModal } from "@/components/grading/TrackRegradeModal";
+import { PriceChartingAttribution } from "@/components/cards/PriceChartingAttribution";
 import {
   useTrackedRegrades,
   type TrackedRegradeRow,
@@ -25,6 +26,9 @@ interface GradePrice {
   grade: string;
   price: number;
   source: string;
+  // PriceCharting attribution linkback (CLAUDE.md license note) — null for
+  // every other source. See components/cards/PriceChartingAttribution.tsx.
+  sourceProductId: string | null;
 }
 
 interface Opportunity {
@@ -792,6 +796,16 @@ function OpportunityRow({
                 </div>
               );
             })}
+
+            {opp.gradePrices.some((g) => g.source === "pricecharting") && (
+              <div style={{ display: "flex", justifyContent: "flex-end", padding: "2px 4px" }}>
+                <PriceChartingAttribution
+                  productId={
+                    opp.gradePrices.find((g) => g.source === "pricecharting")?.sourceProductId
+                  }
+                />
+              </div>
+            )}
 
             {/* No graded data */}
             {Object.keys(byCompany).length === 0 && (
@@ -2537,6 +2551,13 @@ const STATUS_COLORS: Record<string, string> = {
   shipped_back: "#8B5CF6",
   returned: "#10B981",
 };
+// COMPANIES itself is unused dead code (pre-existing, unrelated to this
+// note) — the actual company picker below derives its options from
+// Object.keys(TIERS). ACE is deliberately NOT added to TIERS: that's real
+// submission-cost pricing data we don't have and won't fabricate, mirroring
+// mobile's SERVICE_TIERS (types/grading.ts) and submissions/new.tsx, which
+// exclude ACE from the paid-submission picker for the same reason — added
+// 2026-08-25.
 const COMPANIES = ["PSA", "BGS", "CGC", "SGC"];
 const TIERS: Record<string, Record<string, number>> = {
   PSA: { value: 25, regular: 50, express: 150, walkthrough: 600 },
