@@ -35,7 +35,8 @@ const PLAN_LABEL: Record<string, string> = {
 interface QuickAddGradedInventoryProps {
   cardId: string;
   /** Grading company exactly as the backend expects ("PSA", "BGS", etc.) */
-  gradingCompany: "PSA" | "BGS" | "CGC" | "SGC" | "TAG";
+  // ACE added 2026-08-25 — see constants/grading.ts header note.
+  gradingCompany: "PSA" | "BGS" | "CGC" | "SGC" | "TAG" | "ACE";
   /** Grade string exactly as PokeTrace returns it ("10", "9.5", "Black Label", etc.) */
   grade: string;
   collectionId?: string | null;

@@ -1,5 +1,6 @@
 export type InventoryItemType = "sealed" | "single" | "graded";
-export type GradingCompany = "PSA" | "BGS" | "CGC" | "TAG" | "SGC";
+// ACE added 2026-08-25 — see constants/grading.ts header note.
+export type GradingCompany = "PSA" | "BGS" | "CGC" | "TAG" | "SGC" | "ACE";
 export type GradingStatus = "raw" | "submitted" | "returned";
 
 export interface InventoryItem {

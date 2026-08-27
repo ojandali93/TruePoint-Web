@@ -17,7 +17,10 @@ import SoldView from "../../../components/inventory/SoldView";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ItemType = "raw_card" | "graded_card" | "sealed_product";
-type GradingCompany = "PSA" | "BGS" | "CGC" | "SGC" | "TAG";
+// ACE added 2026-08-25 — see constants/grading.ts header note (mobile mirror
+// of this same fix). Grade ladder below is best-effort (observed data +
+// TAG/SGC pattern), not ACE's verified official scale — adjust if known.
+type GradingCompany = "PSA" | "BGS" | "CGC" | "SGC" | "TAG" | "ACE";
 type FilterTab = "all" | "raw_card" | "graded_card" | "sealed_product" | "sold";
 type ConditionGrade = "NM" | "LP" | "MP" | "HP" | "DM";
 
@@ -95,7 +98,7 @@ interface SearchResult {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const GRADING_COMPANIES: GradingCompany[] = ["PSA", "BGS", "CGC", "SGC", "TAG"];
+const GRADING_COMPANIES: GradingCompany[] = ["PSA", "BGS", "CGC", "SGC", "TAG", "ACE"];
 
 // Raw-card condition grades (TCG standard short codes)
 const CONDITIONS: ConditionGrade[] = ["NM", "LP", "MP", "HP", "DM"];
@@ -113,6 +116,7 @@ const COMPANY_COLORS: Record<GradingCompany, string> = {
   CGC: "#3DAA6E",
   SGC: "#7F77DD",
   TAG: "#D85A30",
+  ACE: "#2FA8A0",
 };
 
 const GRADES_BY_COMPANY: Record<GradingCompany, string[]> = {
@@ -121,6 +125,7 @@ const GRADES_BY_COMPANY: Record<GradingCompany, string[]> = {
   CGC: ["Pristine 10", "10", "9.5", "9", "8.5", "8", "7.5", "7", "6", "5"],
   SGC: ["10", "9.5", "9", "8.5", "8", "7.5", "7", "6", "5", "4"],
   TAG: ["Pristine 10", "10", "9", "8", "7", "6", "5"],
+  ACE: ["10", "9.5", "9", "8.5", "8", "7.5", "7"],
 };
 
 const PRODUCT_TYPE_LABELS: Record<string, string> = {

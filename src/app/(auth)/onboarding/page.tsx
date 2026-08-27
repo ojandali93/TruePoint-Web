@@ -19,7 +19,8 @@ import { createClient } from "../../../lib/supabase";
 
 type Step = "profile" | "plan" | "billing" | "confirm";
 
-const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "TAG", "SGC"] as const;
+// ACE added 2026-08-25 — see constants/grading.ts header note.
+const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "TAG", "SGC", "ACE"] as const;
 
 const CURRENCIES = [
   { code: "USD", label: "USD — US Dollar" },
