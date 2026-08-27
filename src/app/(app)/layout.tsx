@@ -694,28 +694,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             gap: 16,
           }}
         >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 8,
-              background: "var(--gold)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <span
-              style={{
-                color: "#0D0E11",
-                fontSize: 14,
-                fontWeight: 700,
-                fontFamily: "DM Mono, monospace",
-              }}
-            >
-              TP
-            </span>
-          </div>
+          {/* Was a hand-drawn "TP" monogram (old-brand initials) — swapped
+              2026-08-27 (W3) for the real current logo mark, same fix as
+              the footer badge in W1. Last old-brand remnant in this repo. */}
+          <Image
+            src='/RH-icon-gold-white.png'
+            alt='Reverse Holo TCG'
+            height={36}
+            width={36}
+            style={{ objectFit: "contain", borderRadius: 8 }}
+          />
           <div
             style={{
               width: 20,
