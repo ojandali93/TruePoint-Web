@@ -829,12 +829,24 @@ export default function SettingsPage() {
             sublabel={`${plan.charAt(0).toUpperCase() + plan.slice(1)} plan`}
             href={ROUTES.SETTINGS_BILLING}
           />
+          <SettingsRow
+            icon='⚙'
+            label='Account settings'
+            sublabel='Email, password, and profile'
+            href={ROUTES.SETTINGS}
+          />
+          <SettingsRow
+            icon='⇪'
+            label='Import collection'
+            sublabel='Bring in cards from Collectr or another app'
+            href={ROUTES.IMPORT}
+          />
           <div style={{ borderBottom: "none" }}>
             <SettingsRow
-              icon='⚙'
-              label='Account settings'
-              sublabel='Email, password, and profile'
-              href={ROUTES.SETTINGS}
+              icon='🕓'
+              label='Import history'
+              sublabel='Past imports and what wasn&apos;t imported'
+              href={ROUTES.IMPORT_HISTORY}
             />
           </div>
         </div>

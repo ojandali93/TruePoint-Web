@@ -18,6 +18,15 @@ export const ROUTES = {
   INVENTORY_GRADED: "/inventory/graded",
   COLLECTIONS: "/inventory/collections",
 
+  IMPORT: "/import",
+  IMPORT_INSTRUCTIONS: "/import/instructions",
+  IMPORT_UPLOAD: "/import/upload",
+  IMPORT_REVIEW: "/import/review",
+  IMPORT_PROGRESS: "/import/progress",
+  IMPORT_SUMMARY: "/import/summary",
+  IMPORT_HISTORY: "/import/history",
+  IMPORT_JOB: (jobId: string) => `/import/history/${jobId}`,
+
   GRADING: "/grading",
   ARBITRAGE: "/grading/arbitrage",
   GRADING_LIFECYCLE: "/grading/submissions",

@@ -2768,22 +2768,41 @@ export default function InventoryPage() {
                 : "Try adjusting your search or filter"}
             </div>
             {items.length === 0 && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                style={{
-                  padding: "10px 24px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "var(--gold)",
-                  color: "#0D0E11",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                Add your first item
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  style={{
+                    padding: "10px 24px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "var(--gold)",
+                    color: "#0D0E11",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Add your first item
+                </button>
+                {/* Import CTA lives here too, not just Settings — this is
+                    the moment a new/empty-inventory user is most likely to
+                    want it (docs/csv-import-design.md, W2). */}
+                <button
+                  onClick={() => router.push(ROUTES.IMPORT)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    fontSize: 13,
+                    color: "var(--gold)",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Import a collection
+                </button>
+              </div>
             )}
           </div>
         )}
