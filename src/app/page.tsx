@@ -341,47 +341,13 @@ const FEATURE_TIMELINE = [
   },
 ];
 
-// TODO: attribute every quote to a REAL user (name + permission) before publishing.
-// Fabricated named testimonials on a paid app violate FTC + App/Play policy.
-// The quote copy is written to convert an on-the-fence visitor — keep it, swap the names.
-const TESTIMONIALS = [
-  {
-    quote:
-      "I was about to send a $400 Charizard to PSA. Reverse Holo flagged a soft corner I couldn't even see and called a 9. Saved me the fee and the heartbreak.",
-    name: "Marcus R.", // TODO: real name + permission
-    role: "Vintage collector",
-  },
-  {
-    quote:
-      "The arbitrage tool paid for a full year of the app in one trade. It showed me a raw card was worth $300 more graded after fees — math I'd never have run myself.",
-    name: "Devin T.", // TODO: real name + permission
-    role: "PSA submitter",
-  },
-  {
-    quote:
-      "Six years of spreadsheets, gone. I rebuilt my entire collection in Reverse Holo in an afternoon and haven't opened Excel since.",
-    name: "Priya N.", // TODO: real name + permission
-    role: "Modern collector",
-  },
-  {
-    quote:
-      "At a show last weekend I pulled up the trade calculator mid-deal and caught that I was about to give up $150 in value. Renegotiated on the spot.",
-    name: "Jordan K.", // TODO: real name + permission
-    role: "Show regular",
-  },
-  {
-    quote:
-      "The centering tool matches what graders actually do. My last three PSA submissions came back within half a grade of what Reverse Holo predicted.",
-    name: "Alex M.", // TODO: real name + permission
-    role: "Grader",
-  },
-  {
-    quote:
-      "Finally an app built by someone who actually collects. Every screen answers a question I've genuinely had standing at a card counter.",
-    name: "Sam D.", // TODO: real name + permission
-    role: "Master set chaser",
-  },
-];
+// REMOVED 2026-08-26: this array held 6 fully fabricated named testimonials
+// ("Marcus R.", "Devin T.", ...) that were LIVE on the site despite a
+// comment on this exact spot already calling them an FTC + App/Play policy
+// violation. Taken down whole (array and render section both), not patched
+// — see the W1 audit for the ruling. A real testimonials section is a
+// separate future task once actual, permissioned customer reviews exist;
+// don't recreate this with placeholder names in the meantime.
 
 const NEWS_ITEMS = [
   {
@@ -405,14 +371,11 @@ const NEWS_ITEMS = [
     body: "Photograph a raw card and get a predicted grade with centering, corners, edges, and surface sub-scores — before you spend a cent submitting.",
     tag: "Product",
   },
-  {
-    // TODO: replace with a CURRENT, VERIFIED Pokémon TCG headline before publishing.
-    type: "POKEMON NEWS",
-    date: "TODO",
-    title: "TODO — add a current TCG industry headline",
-    body: "TODO — replace with a real, sourced update from the Pokémon TCG world.",
-    tag: "TCG News",
-  },
+  // A 4th entry lived here as a placeholder ("type: POKEMON NEWS", date:
+  // "TODO", title: "TODO — add a current TCG industry headline") that was
+  // rendering literal "TODO" text to real visitors. Removed 2026-08-26
+  // rather than left broken — add back with a real, sourced, dated
+  // headline when there is one; don't refill with another placeholder.
 ];
 
 const ROADMAP = [
@@ -526,10 +489,14 @@ const PLANS = [
   },
 ];
 
+// Real numbers, queried 2026-08-26 (W1 audit) — was 18,000+/160+/4/3, all
+// stale. Cards/sets/grading-companies re-verify against the DB if this
+// drifts again; "3 price sources" held as-is per ruling even though one
+// (pricecharting) is still allowlist-gated, not publicly visible yet.
 const METRICS = [
-  { value: "18,000+", label: "Cards indexed" },
-  { value: "160+", label: "Sets tracked" },
-  { value: "4", label: "Grading companies" },
+  { value: "72,000+", label: "Cards indexed" },
+  { value: "758", label: "Sets tracked" },
+  { value: "6", label: "Grading companies" },
   { value: "3", label: "Price sources" },
 ];
 
@@ -656,7 +623,7 @@ export default function LandingPage() {
             className='landing-nav-right'
             style={{ display: "flex", gap: 28, alignItems: "center" }}
           >
-            {["Features", "App", "Pricing", "Testimonials", "Roadmap"].map(
+            {["Features", "App", "Pricing", "Roadmap"].map(
               (l) => (
                 <a
                   key={l}
@@ -897,10 +864,9 @@ export default function LandingPage() {
 
             {/* ── App availability (App Store + Google Play) ─────────────
                 Apple badge = Apple's official distributed SVG artwork.
-                Google badge = matched SVG (recreated to fit this design).
-                TODO: for full brand compliance you can later swap the Google
-                badge for the official "Get it on Google Play" asset from
-                https://play.google.com/intl/en_us/badges/
+                Google badge = Google's official static asset
+                (google-play-badge.png, from play.google.com/intl/en_us/badges/)
+                — was a hand-recreated SVG until the 2026-08-26 W1 audit.
             ──────────────────────────────────────────────────────────── */}
             <div
               className='animate-fade-up delay-600'
@@ -998,54 +964,16 @@ export default function LandingPage() {
                     e.currentTarget.style.opacity = "1";
                   }}
                 >
-                  <svg
-                    xmlns='http://www.w3.org/2000/svg'
-                    viewBox='0 0 135 40'
-                    aria-label='Get it on Google Play'
-                    role='img'
-                    style={{
-                      height: 40,
-                      width: "auto",
-                      userSelect: "none",
-                    }}
-                  >
-                    <title>Get it on Google Play</title>
-                    <rect
-                      x='0.5'
-                      y='0.5'
-                      width='134'
-                      height='39'
-                      rx='6'
-                      fill='#000000'
-                      stroke='#a6a6a6'
-                      strokeWidth='1'
-                    />
-                    <polygon points='13,8 13,20 21,20' fill='#00A0FF' />
-                    <polygon points='13,8 21,20 35,20' fill='#00D447' />
-                    <polygon points='13,32 21,20 35,20' fill='#FFCE00' />
-                    <polygon points='13,32 13,20 21,20' fill='#FF3D47' />
-                    <text
-                      x='44'
-                      y='16'
-                      fill='#ffffff'
-                      fontFamily='Arial, Helvetica, sans-serif'
-                      fontSize='6.5'
-                      letterSpacing='0.8'
-                    >
-                      GET IT ON
-                    </text>
-                    <text
-                      x='43'
-                      y='32'
-                      fill='#ffffff'
-                      fontFamily='Arial, Helvetica, sans-serif'
-                      fontSize='15'
-                      fontWeight='600'
-                      letterSpacing='0.2'
-                    >
-                      Google Play
-                    </text>
-                  </svg>
+                  {/* Google's own official badge asset (en_badge_web_generic),
+                      swapped in 2026-08-26 for the hand-recreated SVG this
+                      used to be — W1 audit. */}
+                  <Image
+                    src='/google-play-badge.png'
+                    alt='Get it on Google Play'
+                    height={40}
+                    width={103}
+                    style={{ height: 40, width: "auto", userSelect: "none" }}
+                  />
                 </a>
               </div>
             </div>
@@ -1138,7 +1066,12 @@ export default function LandingPage() {
       </section>
 
       {/* ── Trust strip ─────────────────────────────────────────── */}
-      {/* TODO: confirm "11,000+" is defensible (signups across web + both apps + waitlist). */}
+      {/* Was a fabricated signup count ("4,500+", with a stale TODO above
+          it questioning an EARLIER fabricated "11,000+") — replaced
+          2026-08-26 with a catalog-scale claim, real numbers queried
+          directly from the DB (cards: 72,287 total; sets: 758 live,
+          tcgapis_group_id filter, matches findAllSets()'s own dead-set
+          exclusion). W1 audit, Option B. */}
       <div
         style={{
           borderBottom: "1px solid var(--border)",
@@ -1154,8 +1087,8 @@ export default function LandingPage() {
             letterSpacing: "0.12em",
           }}
         >
-          TRUSTED BY <span style={{ color: "var(--gold)" }}>4,500+</span>{" "}
-          POKÉMON COLLECTORS WORLDWIDE
+          <span style={{ color: "var(--gold)" }}>72,000+</span> CARDS TRACKED
+          ACROSS <span style={{ color: "var(--gold)" }}>758</span> SETS
         </div>
       </div>
 
@@ -1931,109 +1864,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Testimonials ─────────────────────────────────────────── */}
-      <section
-        id='testimonials'
-        style={{ borderTop: "1px solid var(--border)", padding: "120px 24px" }}
-      >
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ marginBottom: 56, textAlign: "center" }}>
-            <div
-              className='font-mono'
-              style={{
-                fontSize: 11,
-                color: "var(--gold)",
-                letterSpacing: "0.12em",
-                marginBottom: 16,
-              }}
-            >
-              TESTIMONIALS
-            </div>
-            <h2
-              className='font-display'
-              style={{
-                fontSize: "clamp(36px, 5vw, 64px)",
-                letterSpacing: "0.04em",
-                lineHeight: 1,
-              }}
-            >
-              COLLECTORS
-              <br />
-              <span style={{ color: "var(--text-secondary)" }}>
-                RATE REVERSE HOLO.
-              </span>
-            </h2>
-          </div>
-
-          <div
-            className='landing-3col-grid'
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 16,
-            }}
-          >
-            {TESTIMONIALS.map((t, i) => (
-              <div
-                key={i}
-                className='card-hover'
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: "32px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 20,
-                }}
-              >
-                <div style={{ display: "flex", gap: 2 }}>
-                  {Array.from({ length: 5 }).map((_, s) => (
-                    <span
-                      key={s}
-                      style={{ color: "var(--gold)", fontSize: 14 }}
-                    >
-                      ★
-                    </span>
-                  ))}
-                </div>
-                <p
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-primary)",
-                    lineHeight: 1.7,
-                    flex: 1,
-                  }}
-                >
-                  “{t.quote}”
-                </p>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    {t.name}
-                  </div>
-                  <div
-                    className='font-mono'
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-dim)",
-                      marginTop: 2,
-                    }}
-                  >
-                    {t.role.toUpperCase()}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ── Pricing ──────────────────────────────────────────────── */}
       <section
         id='pricing'
@@ -2651,28 +2481,13 @@ export default function LandingPage() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 4,
-                background: "var(--gold)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <span
-                style={{
-                  color: "#0D0E11",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  fontFamily: "DM Mono, monospace",
-                }}
-              >
-                TP
-              </span>
-            </div>
+            <Image
+              src='/RH-icon-gold-white.png'
+              alt='Reverse Holo TCG'
+              height={22}
+              width={22}
+              style={{ objectFit: "contain" }}
+            />
             <span
               className='font-display'
               style={{ fontSize: 16, letterSpacing: "0.08em" }}
@@ -2684,8 +2499,8 @@ export default function LandingPage() {
             © 2026 Reverse Holo TCG. All rights reserved.
           </div>
           <div style={{ display: "flex", gap: 24 }}>
-            <a
-              href='#'
+            <Link
+              href='/privacy'
               style={{
                 fontSize: 12,
                 color: "var(--text-dim)",
@@ -2693,9 +2508,9 @@ export default function LandingPage() {
               }}
             >
               Privacy
-            </a>
-            <a
-              href='#'
+            </Link>
+            <Link
+              href='/terms'
               style={{
                 fontSize: 12,
                 color: "var(--text-dim)",
@@ -2703,7 +2518,7 @@ export default function LandingPage() {
               }}
             >
               Terms
-            </a>
+            </Link>
             <a
               href='#contact'
               style={{
