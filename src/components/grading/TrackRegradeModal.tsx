@@ -25,14 +25,10 @@ import {
   type TrackedRegradeStatus,
 } from "../../hooks/useRegradeTracker";
 import { PriceChartingAttribution } from "../cards/PriceChartingAttribution";
-
-const COMPANY_COLORS: Record<string, string> = {
-  PSA: "#C9A84C",
-  BGS: "#378ADD",
-  CGC: "#3DAA6E",
-  TAG: "#D85A30",
-  SGC: "#7F77DD",
-};
+import { COMPANY_COLORS } from "../../constants/grading";
+// COMPANY_COLORS now imported from constants/grading.ts (W3.5, 2026-08-27)
+// — this local copy already matched the shared values exactly but was
+// missing ACE entirely (the grade ladder can return ACE rows).
 
 const STATUS_LABEL: Record<TrackedRegradeStatus, string> = {
   researching: "Researching",

@@ -17,11 +17,18 @@ import {
   type BorderPositions,
 } from "../../../../../hooks/useCenteringReports";
 
+// Kept local (not consolidated onto constants/grading.ts's shared
+// COMPANY_COLORS) — this feature's data model uses lowercase company
+// codes throughout, unlike the rest of the app, so an uppercase-keyed
+// shared import would silently break every lookup here. sgc corrected
+// 2026-08-27 (W3.5): had drifted from centering/page.tsx's own #7F77DD to
+// #9B59B6 — synced against that sibling file, not the app-wide token,
+// since this pair share their own scheme deliberately (see that file).
 const COMPANY_COLORS: Record<string, string> = {
   psa: "#C9A84C",
   bgs: "#378ADD",
   cgc: "#3DAA6E",
-  sgc: "#9B59B6",
+  sgc: "#7F77DD",
   tag: "#D85A30",
 };
 

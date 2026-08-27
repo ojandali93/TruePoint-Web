@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import api from "../../../lib/api";
 import { FeatureGate } from "@/components/PlanGuards";
+import { COMPANY_COLORS } from "@/constants/grading";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -325,13 +326,9 @@ function ChangeBadge({
 // ─── Top performer row ─────────────────────────────────────────────────────────
 
 function PerformerRow({ item, rank }: { item: TopPerformer; rank: number }) {
-  const COMPANY_COLORS: Record<string, string> = {
-    PSA: "#C9A84C",
-    BGS: "#378ADD",
-    CGC: "#3DAA6E",
-    SGC: "#7F77DD",
-    TAG: "#D85A30",
-  };
+  // COMPANY_COLORS now imported from constants/grading.ts (W3.5,
+  // 2026-08-27) — this local copy already matched the shared values
+  // exactly but was missing ACE.
 
   return (
     <div

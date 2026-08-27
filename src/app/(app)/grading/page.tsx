@@ -111,13 +111,20 @@ const RECO_CONFIG = {
 };
 
 // ─── Company colours ──────────────────────────────────────────────────────────
+// This page's own distinct palette (also includes EBAY/GMA, which
+// constants/grading.ts's shared COMPANY_COLORS doesn't cover) — not
+// consolidated wholesale, unlike cards/watchlist/TrackRegradeModal/
+// portfolio, since every other value here deliberately differs from that
+// shared set too, not just ACE. ACE corrected 2026-08-27 (W3.5) to match
+// the app-wide token (#2FA8A0, constants/grading.ts) — it had drifted to
+// #EC4899, a pink not used as ACE's color anywhere else in the app.
 const COMPANY_COLORS: Record<string, string> = {
   PSA: "#3B82F6",
   BGS: "#8B5CF6",
   CGC: "#F59E0B",
   EBAY: "#EF4444",
   TAG: "#10B981",
-  ACE: "#EC4899",
+  ACE: "#2FA8A0",
   GMA: "#06B6D4",
   SGC: "#6366F1",
 };

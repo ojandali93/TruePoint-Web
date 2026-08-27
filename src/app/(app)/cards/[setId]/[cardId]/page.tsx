@@ -43,6 +43,7 @@ import QuickAddInventory from "../../../../../components/cards/QuickAddInventory
 import type { QuickAddVariant } from "../../../../../components/cards/QuickAddInventory";
 import QuickAddGradedInventory from "../../../../../components/cards/QuickAddGradedInventory";
 import { TrackRegradeModal } from "../../../../../components/grading/TrackRegradeModal";
+import { COMPANY_COLORS } from "../../../../../constants/grading";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -387,13 +388,12 @@ export default function CardDetailPage({
 
 const MAJOR_COMPANIES = ["PSA", "BGS", "TAG", "CGC"] as const;
 type MajorCompany = (typeof MAJOR_COMPANIES)[number];
-const COMPANY_COLORS: Record<string, string> = {
-  PSA: "#C9A84C",
-  BGS: "#378ADD",
-  CGC: "#3DAA6E",
-  TAG: "#D85A30",
-  SGC: "#7F77DD",
-};
+// COMPANY_COLORS imported from constants/grading.ts (W3.5, 2026-08-27) —
+// this local copy's values already matched exactly (this widget only ever
+// looks up the 4 MAJOR_COMPANIES above, so the shared map's extra SGC/ACE
+// entries are simply unused here, not a behavior change). The 4-company
+// MAJOR_COMPANIES scope itself is still the deliberate, documented,
+// untouched design choice — only the duplicate color values were removed.
 const TOGGLE_STORAGE_KEY = "truepoint-grade-ten-comparison-companies";
 
 function useCompanyToggle(): [Set<MajorCompany>, (c: MajorCompany) => void] {
@@ -779,14 +779,10 @@ function GradingAnalysis({
   // curated MAJOR_COMPANIES 4-slot widget above — that one is a deliberate
   // documented design choice and is left untouched.
   const COMPANY_ORDER = ["PSA", "BGS", "CGC", "TAG", "SGC", "ACE"];
-  const COMPANY_COLORS: Record<string, string> = {
-    PSA: "#C9A84C",
-    BGS: "#378ADD",
-    CGC: "#3DAA6E",
-    TAG: "#D85A30",
-    SGC: "#9B59B6",
-    ACE: "#2FA8A0",
-  };
+  // COMPANY_COLORS now imported from constants/grading.ts (W3.5,
+  // 2026-08-27) — this local copy's SGC (#9B59B6) had drifted from the
+  // shared value (#7F77DD); consolidating fixes that plus prevents the
+  // next drift.
 
   const byCompany = useMemo(() => {
     const m = new Map<string, GradedPriceRow[]>();
