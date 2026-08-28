@@ -102,7 +102,7 @@ export default function BillingSettingsPage() {
     setError(null);
     setMessage(null);
     try {
-      await api.post("/billing/cancel");
+      await api.delete("/billing/subscription");
       setMessage("Subscription canceled. Access continues until period end.");
       await load();
     } catch (err) {
