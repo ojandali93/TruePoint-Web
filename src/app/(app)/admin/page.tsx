@@ -6,6 +6,18 @@ import { useRouter } from "next/navigation";
 import api from "../../../lib/api";
 import SyncPanel from "@/components/admin/SyncPanel";
 import UserDetailModal from "@/components/dashboard/UserDetailModal";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -140,6 +152,7 @@ type Tab =
   | "costs"
   | "settings"
   | "feedback"
+  | "satisfaction"
   | "sync";
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
@@ -3472,6 +3485,436 @@ function Feedback() {
   );
 }
 
+// ─── Satisfaction (product_feedback — a DIFFERENT table from `feedback`
+// above, see FEEDBACK_DESIGN.md §1.1: rating/reason-primary, not
+// support-ticket free-text-primary. Deliberately its own tab, not folded
+// into "Feedback".) ─────────────────────────────────────────────────────────
+
+interface ProductFeedbackRow {
+  id: string;
+  created_at: string;
+  feedback_type: "periodic" | "cancellation";
+  rating: number | null;
+  cancellation_reasons: string[] | null;
+  was_trial: boolean | null;
+  free_text: string | null;
+  trigger_context: string;
+  app_version: string | null;
+  platform: string | null;
+  user_id: string;
+  user: { id: string; username: string | null; full_name: string | null } | null;
+}
+
+interface CancellationReasonBreakdownRow {
+  reason: string;
+  wasTrial: boolean | null;
+  count: number;
+}
+
+interface RatingTrendPoint {
+  weekStart: string;
+  averageRating: number;
+  count: number;
+}
+
+const REASON_LABELS: Record<string, string> = {
+  too_expensive: "Too expensive",
+  missing_feature: "Missing a feature",
+  didnt_work_as_expected: "Didn't work as expected",
+  not_using_enough: "Not using it enough",
+  switched_to_another_app: "Switched to another app",
+  just_exploring: "Just exploring",
+  other: "Other",
+};
+
+function pivotReasonBreakdown(
+  rows: CancellationReasonBreakdownRow[],
+): { reason: string; label: string; trial: number; paid: number; unknown: number }[] {
+  const byReason = new Map<
+    string,
+    { trial: number; paid: number; unknown: number }
+  >();
+  for (const row of rows) {
+    const bucket = byReason.get(row.reason) ?? { trial: 0, paid: 0, unknown: 0 };
+    if (row.wasTrial === true) bucket.trial += row.count;
+    else if (row.wasTrial === false) bucket.paid += row.count;
+    else bucket.unknown += row.count;
+    byReason.set(row.reason, bucket);
+  }
+  return Array.from(byReason.entries())
+    .map(([reason, counts]) => ({
+      reason,
+      label: REASON_LABELS[reason] ?? reason,
+      ...counts,
+    }))
+    .sort((a, b) => b.trial + b.paid + b.unknown - (a.trial + a.paid + a.unknown));
+}
+
+function Satisfaction() {
+  const [rows, setRows] = useState<ProductFeedbackRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [feedbackType, setFeedbackType] = useState<"" | "periodic" | "cancellation">("");
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const [breakdown, setBreakdown] = useState<CancellationReasonBreakdownRow[]>([]);
+  const [ratingTrend, setRatingTrend] = useState<RatingTrendPoint[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+
+  const loadList = useCallback(async () => {
+    setLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (feedbackType) p.set("feedback_type", feedbackType);
+      if (cancellationReason) p.set("cancellation_reason", cancellationReason);
+      const r = await api.get<{
+        data: { feedback: ProductFeedbackRow[]; total: number };
+      }>(`/admin/product-feedback?${p.toString()}`);
+      setRows(r.data.data.feedback);
+      setTotal(r.data.data.total);
+    } finally {
+      setLoading(false);
+    }
+  }, [feedbackType, cancellationReason]);
+
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      const r = await api.get<{
+        data: {
+          cancellationReasonBreakdown: CancellationReasonBreakdownRow[];
+          ratingTrend: RatingTrendPoint[];
+        };
+      }>("/admin/product-feedback/summary");
+      setBreakdown(r.data.data.cancellationReasonBreakdown);
+      setRatingTrend(r.data.data.ratingTrend);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void loadList();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [loadList]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void loadSummary();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [loadSummary]);
+
+  const pivoted = pivotReasonBreakdown(breakdown);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+      {/* ─── Cancellation reason breakdown, segmented trial/paid ─────────── */}
+      <div>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 12,
+          }}
+        >
+          Cancellation reasons (90 days) — trial vs. paid
+        </div>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: 16,
+            height: 280,
+          }}
+        >
+          {summaryLoading ? (
+            <Loader />
+          ) : pivoted.length === 0 ? (
+            <EmptyState msg='No cancellation feedback in this window' />
+          ) : (
+            <ResponsiveContainer width='100%' height='100%'>
+              <BarChart data={pivoted} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray='3 3' stroke='var(--border)' opacity={0.4} />
+                <XAxis
+                  dataKey='label'
+                  tick={{ fontSize: 10, fill: "var(--text-dim)" }}
+                  axisLine={{ stroke: "var(--border)" }}
+                  tickLine={{ stroke: "var(--border)" }}
+                  interval={0}
+                  angle={-20}
+                  textAnchor='end'
+                  height={50}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: "var(--text-dim)" }}
+                  axisLine={{ stroke: "var(--border)" }}
+                  tickLine={{ stroke: "var(--border)" }}
+                  width={32}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey='paid' name='Paid' fill='#EF4444' stackId='a' />
+                <Bar dataKey='trial' name='Trial' fill='var(--gold)' stackId='a' />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Rating trend ──────────────────────────────────────────────── */}
+      <div>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "var(--text-primary)",
+            marginBottom: 12,
+          }}
+        >
+          Rating trend (weekly average, last 12 weeks)
+        </div>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: 16,
+            height: 240,
+          }}
+        >
+          {summaryLoading ? (
+            <Loader />
+          ) : ratingTrend.length === 0 ? (
+            <EmptyState msg='No periodic ratings yet' />
+          ) : (
+            <ResponsiveContainer width='100%' height='100%'>
+              <LineChart data={ratingTrend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray='3 3' stroke='var(--border)' opacity={0.4} />
+                <XAxis
+                  dataKey='weekStart'
+                  tick={{ fontSize: 10, fill: "var(--text-dim)" }}
+                  axisLine={{ stroke: "var(--border)" }}
+                  tickLine={{ stroke: "var(--border)" }}
+                  minTickGap={20}
+                />
+                <YAxis
+                  domain={[1, 5]}
+                  tick={{ fontSize: 10, fill: "var(--text-dim)" }}
+                  axisLine={{ stroke: "var(--border)" }}
+                  tickLine={{ stroke: "var(--border)" }}
+                  width={24}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                  formatter={(value, name) =>
+                    name === "averageRating" ? [value, "Avg rating"] : [value, name]
+                  }
+                />
+                <Line
+                  type='monotone'
+                  dataKey='averageRating'
+                  stroke='var(--gold)'
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Recent submissions ────────────────────────────────────────── */}
+      <div>
+        <div
+          style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}
+        >
+          {(["", "periodic", "cancellation"] as const).map((t) => {
+            const active = feedbackType === t;
+            return (
+              <button
+                key={t || "all"}
+                onClick={() => {
+                  setFeedbackType(t);
+                  if (t !== "cancellation") setCancellationReason("");
+                }}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  border: `1px solid ${active ? "var(--gold)" : "var(--border)"}`,
+                  background: active ? "var(--gold)22" : "transparent",
+                  color: active ? "var(--gold)" : "var(--text-dim)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  textTransform: "capitalize",
+                }}
+              >
+                {t || "All"}
+              </button>
+            );
+          })}
+          <span
+            style={{ fontSize: 12, color: "var(--text-dim)", alignSelf: "center", marginLeft: "auto" }}
+          >
+            {total}
+          </span>
+        </div>
+
+        {feedbackType === "cancellation" && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+            {(["", ...Object.keys(REASON_LABELS)] as const).map((r) => {
+              const active = cancellationReason === r;
+              return (
+                <button
+                  key={r || "all-reasons"}
+                  onClick={() => setCancellationReason(r)}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? "var(--gold)" : "var(--border)"}`,
+                    background: active ? "var(--gold)22" : "transparent",
+                    color: active ? "var(--gold)" : "var(--text-dim)",
+                    fontSize: 10,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {r ? REASON_LABELS[r] : "All reasons"}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {loading ? (
+            <Loader />
+          ) : rows.length === 0 ? (
+            <EmptyState msg='No submissions yet' />
+          ) : (
+            rows.map((f) => (
+              <div
+                key={f.id}
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: "12px 16px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    marginBottom: 6,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "2px 7px",
+                      borderRadius: 4,
+                      background: f.feedback_type === "cancellation" ? "#EF444422" : "var(--gold)22",
+                      color: f.feedback_type === "cancellation" ? "#EF4444" : "var(--gold)",
+                      fontFamily: "DM Mono, monospace",
+                      flexShrink: 0,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {f.feedback_type}
+                  </span>
+                  {f.rating !== null && (
+                    <span style={{ fontSize: 12, color: "var(--text-primary)" }}>
+                      {"★".repeat(f.rating)}
+                      {"☆".repeat(5 - f.rating)}
+                    </span>
+                  )}
+                  {f.cancellation_reasons && f.cancellation_reasons.length > 0 && (
+                    <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                      {f.cancellation_reasons.map((r) => REASON_LABELS[r] ?? r).join(", ")}
+                    </span>
+                  )}
+                  {f.was_trial !== null && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: "var(--text-dim)",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      {f.was_trial ? "TRIAL" : "PAID"}
+                    </span>
+                  )}
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                      marginLeft: "auto",
+                    }}
+                  >
+                    {new Date(f.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                {f.free_text && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-secondary)",
+                      marginBottom: 6,
+                    }}
+                  >
+                    “{f.free_text}”
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                    display: "flex",
+                    gap: 8,
+                  }}
+                >
+                  <span>{f.user?.full_name ?? f.user?.username ?? f.user_id}</span>
+                  <span>·</span>
+                  <span>{f.trigger_context}</span>
+                  {f.platform && (
+                    <>
+                      <span>·</span>
+                      <span>{f.platform}{f.app_version ? ` ${f.app_version}` : ""}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main admin page ──────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -3488,6 +3931,7 @@ export default function AdminPage() {
     { key: "costs", label: "Grading Costs" },
     { key: "settings", label: "Settings & Sync" },
     { key: "feedback", label: "Feedback" },
+    { key: "satisfaction", label: "Satisfaction" },
     { key: "sync", label: "Manual Sync" },
   ];
 
@@ -3644,6 +4088,7 @@ export default function AdminPage() {
         {activeTab === "costs" && <GradingCosts />}
         {activeTab === "settings" && <PlatformSettings />}
         {activeTab === "feedback" && <Feedback />}
+        {activeTab === "satisfaction" && <Satisfaction />}
         {activeTab === "sync" && <SyncPanel />}
       </div>
     </div>
