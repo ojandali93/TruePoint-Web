@@ -425,6 +425,26 @@ const ROADMAP = [
   },
 ];
 
+// Numbers verified against truepoint-server/src/services/plan.service.ts's
+// FEATURE_MIN_PLAN/MONTHLY_LIMITS/STATIC_LIMITS (source of truth) —
+// UX_OVERHAUL_PLAN.md §7 go-live fix, not hand-typed. Previously wrong and
+// live in production: master sets said 3 (real: 5), AI grading said
+// 100/mo (real: 5/mo), submission tracking said 4/mo (real: 5 active — a
+// concurrent cap, not monthly, since Phase 1 gate 4), arbitrage said
+// 50/mo (real: 15/mo), price alerts said 10 cards (real: 5 — watchlist +
+// price alerts are the same resource). Starter's AI grading/submission
+// tracking were also shown as `included: false`, which is flatly wrong,
+// not just a stale number — both are free-tier-accessible today. Pro
+// price corrected from a stale $24.99 to the decided $14.99/mo (§7).
+//
+// NOTE: this is the legacy 3-tier display, unconditional (not flag-gated)
+// — this page is public/anonymous with no PlanProvider in its tree
+// (PlanContext's GET /me/plan requires a session), so it can't cleanly
+// read pro_pricing_v2 the way the authenticated onboarding flow can.
+// Flagged for Omar: once pro_pricing_v2 reaches "everyone", this page's
+// copy needs a follow-up content update to the new Free/Pro structure —
+// not dynamic per-visitor gating, a straightforward static copy change at
+// that time.
 const PLANS = [
   {
     name: "Starter",
@@ -436,12 +456,12 @@ const PLANS = [
     cta: "Get started free",
     features: [
       { text: "Reverse Holo centering score", included: true },
-      { text: "Master set tracker", included: true, note: "3 sets" },
+      { text: "AI grading reports", included: true, note: "5/mo" },
+      { text: "Submission tracking", included: true, note: "5 active" },
+      { text: "Master set tracker", included: true, note: "5 sets" },
       { text: "Card search & live prices", included: true },
       { text: "Set browser", included: true },
-      { text: "AI grading reports", included: false },
-      { text: "Inventory tracking", included: false },
-      { text: "Submission tracking", included: false },
+      { text: "Inventory tracking", included: true },
       { text: "Portfolio dashboard", included: false },
     ],
   },
@@ -455,12 +475,12 @@ const PLANS = [
     cta: "Start Collector plan",
     features: [
       { text: "Everything in Starter", included: true },
-      { text: "AI grading reports", included: true, note: "100/mo" },
-      { text: "Submission tracking", included: true, note: "4/mo" },
-      { text: "Regrade arbitrage", included: true, note: "50/mo" },
+      { text: "AI grading reports", included: true, note: "5/mo" },
+      { text: "Submission tracking", included: true, note: "5 active" },
+      { text: "Regrade arbitrage", included: true, note: "15/mo" },
       { text: "Master set tracker", included: true, note: "unlimited" },
       { text: "Singles & graded inventory", included: true },
-      { text: "Price alerts", included: true, note: "10 cards" },
+      { text: "Price alerts", included: true, note: "5 cards" },
       { text: "Full portfolio dashboard", included: false },
       { text: "Sealed collection tracking", included: false },
       { text: "Pack opening analytics", included: false },
@@ -468,7 +488,7 @@ const PLANS = [
   },
   {
     name: "Pro",
-    price: "$24.99",
+    price: "$14.99",
     cadence: "per month",
     badge: "PRO",
     badgeColor: "#BA7517",
@@ -481,8 +501,12 @@ const PLANS = [
       { text: "Regrade arbitrage", included: true, note: "unlimited" },
       { text: "Sealed collection tracking", included: true },
       { text: "Full portfolio dashboard", included: true },
-      { text: "P&L and cost basis tracking", included: true },
-      { text: "Pack opening analytics", included: true },
+      {
+        text: "P&L and cost basis tracking",
+        included: false,
+        note: "coming soon",
+      },
+      { text: "Pack opening analytics", included: false, note: "coming soon" },
       { text: "Price alerts", included: true, note: "unlimited" },
       { text: "Early access to new features", included: true },
     ],

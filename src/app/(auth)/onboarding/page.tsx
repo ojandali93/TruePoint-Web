@@ -14,6 +14,7 @@ import { Input } from "../../../components/ui/Input";
 import { ROUTES } from "../../../constants/routes";
 import api from "../../../lib/api";
 import { createClient } from "../../../lib/supabase";
+import { PlanProvider, useFlag } from "../../../context/PlanContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,17 @@ const COLLECTING_YEARS = [
   { value: "over_10", label: "10+ years" },
 ] as const;
 
+// Numbers verified against truepoint-server/src/services/plan.service.ts's
+// FEATURE_MIN_PLAN/MONTHLY_LIMITS/STATIC_LIMITS (source of truth) —
+// UX_OVERHAUL_PLAN.md §7 go-live fix, not hand-typed. Previously wrong:
+// master sets said 3 (real: 5), arbitrage said 50/mo (real: 15/mo), price
+// alerts said 10 cards (real: 5 — watchlist_items, price alerts merged
+// into it), AI grading reports and submission tracking weren't listed on
+// any tier despite both being free-tier-accessible with real caps
+// (5/mo, 5 active respectively) since Phase 1 gate 4. Pro price corrected
+// from a stale $24.99 to the decided $14.99/mo (§7); annual pricing lives
+// in PLAN_META_V2 below, gated behind pro_pricing_v2 — this legacy object
+// stays monthly-only, matching its pre-existing shape.
 const PLAN_META = {
   starter: {
     name: "Starter",
@@ -47,7 +59,9 @@ const PLAN_META = {
     color: "#3DAA6E",
     features: [
       "Reverse Holo centering score",
-      "Master set tracker (3 sets)",
+      "AI grading reports (5/mo)",
+      "Submission tracking (5 active)",
+      "Master set tracker (5 sets)",
       "Card search & live prices",
       "Set browser",
     ],
@@ -58,19 +72,23 @@ const PLAN_META = {
     cadence: "per month",
     color: "#C9A84C",
     features: [
-      "Regrade arbitrage (50/mo)",
+      "AI grading reports (5/mo)",
+      "Regrade arbitrage (15/mo)",
+      "Submission tracking (5 active)",
       "Unlimited master sets",
       "Singles & graded inventory",
-      "Price alerts (10 cards)",
+      "Price alerts (5 cards)",
     ],
   },
   pro: {
     name: "Pro",
-    price: "$24.99",
+    price: "$14.99",
     cadence: "per month",
     color: "#BA7517",
     features: [
+      "Unlimited AI grading reports",
       "Unlimited regrade arbitrage",
+      "Unlimited submission tracking",
       "Sealed collection tracking",
       "Full portfolio dashboard",
       "Unlimited price alerts",
@@ -78,7 +96,80 @@ const PLAN_META = {
   },
 } as const;
 
+// v2 pricing (Free + Pro, monthly/annual) — gated behind the pro_pricing_v2
+// flag (UX_OVERHAUL_PLAN.md §7 Phase 1 gate 6, mirrors mobile's
+// paywall.tsx showProPricingV2 pattern). Free tier reuses the "starter"
+// PlanKey under the hood (checkout/schema untouched — this is a display +
+// billingPeriod change, not a new plan type) but is labeled "Free" here.
+const PLAN_META_V2 = {
+  free: {
+    name: "Free",
+    price: "$0",
+    cadence: "Free forever",
+    color: "#3DAA6E",
+    features: [
+      "Card search & live prices · set browser",
+      "Reverse Holo centering score",
+      "AI grading reports (5/mo)",
+      "Regrade arbitrage (15/mo)",
+      "Submission tracking (5 active)",
+      "Master set tracker (5 sets)",
+      "Watchlist + price alerts (5 cards)",
+      "Import — unlimited, always free",
+    ],
+  },
+  pro: {
+    monthly: { price: "$14.99", cadence: "per month" },
+    annual: { price: "$129.99", cadence: "per year (~$10.83/mo)" },
+    color: "#BA7517",
+    features: [
+      "Unlimited AI grading reports",
+      "Unlimited regrade arbitrage",
+      "Unlimited submission tracking",
+      "Full portfolio dashboard (movers, attribution, history)",
+      "Unlimited master sets, watchlist, price alerts",
+      "Early access to new features",
+    ],
+  },
+} as const;
+
+type BillingPeriod = "monthly" | "annual";
+
 type PlanKey = keyof typeof PLAN_META;
+
+interface PlanDisplay {
+  name: string;
+  price: string;
+  cadence: string;
+  color: string;
+  features: readonly string[];
+}
+
+// Single lookup every step reads through — legacy PLAN_META when the flag
+// is off (or for "collector", which v2 retires from display entirely),
+// PLAN_META_V2 when on. Keeps the flag/billingPeriod branching in one
+// place instead of duplicated across PlanSummaryCard/PlanStep/BillingStep/
+// ConfirmStep.
+function planDisplay(
+  plan: PlanKey,
+  v2: boolean,
+  billingPeriod: BillingPeriod,
+): PlanDisplay {
+  if (v2 && plan === "starter") {
+    return { ...PLAN_META_V2.free, name: "Free" };
+  }
+  if (v2 && plan === "pro") {
+    const pricing = PLAN_META_V2.pro[billingPeriod];
+    return {
+      name: "Pro",
+      price: pricing.price,
+      cadence: pricing.cadence,
+      color: PLAN_META_V2.pro.color,
+      features: PLAN_META_V2.pro.features,
+    };
+  }
+  return PLAN_META[plan];
+}
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -189,8 +280,16 @@ function StepIndicator({ current, plan }: { current: Step; plan: PlanKey }) {
   );
 }
 
-function PlanSummaryCard({ plan }: { plan: PlanKey }) {
-  const meta = PLAN_META[plan];
+function PlanSummaryCard({
+  plan,
+  v2,
+  billingPeriod,
+}: {
+  plan: PlanKey;
+  v2: boolean;
+  billingPeriod: BillingPeriod;
+}) {
+  const meta = planDisplay(plan, v2, billingPeriod);
   return (
     <div
       style={{
@@ -235,7 +334,12 @@ function PlanSummaryCard({ plan }: { plan: PlanKey }) {
             border: `1px solid ${meta.color}33`,
           }}
         >
-          {meta.price}/{meta.cadence === "Free forever" ? "free" : "mo"}
+          {meta.price}/
+          {meta.cadence === "Free forever"
+            ? "free"
+            : v2 && plan === "pro" && billingPeriod === "annual"
+              ? "yr"
+              : "mo"}
         </span>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
@@ -538,14 +642,18 @@ function ProfileStep({ onNext }: { onNext: (data: ProfileData) => void }) {
 
 function BillingStep({
   plan,
+  v2,
+  billingPeriod,
   onNext,
   onBack,
 }: {
   plan: PlanKey;
+  v2: boolean;
+  billingPeriod: BillingPeriod;
   onNext: () => void;
   onBack: () => void;
 }) {
-  const meta = PLAN_META[plan];
+  const meta = planDisplay(plan, v2, billingPeriod);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
   // Only load Stripe when this component mounts — not at module level
@@ -556,9 +664,19 @@ function BillingStep({
 
   const fetchClientSecret = useCallback(async () => {
     try {
+      // billingPeriod is included ONLY when the v2 flag is actually on —
+      // the server resolves plan==="pro" && billingPeriod straight to
+      // STRIPE_PRO_V2_PRICE_IDS regardless of who's asking, so sending it
+      // unconditionally would silently move every "pro" checkout onto the
+      // new (not-yet-approved-for-launch) Stripe prices the moment this
+      // shipped, flag or no flag. v2-off pro checkouts must keep resolving
+      // to the legacy STRIPE_PRICE_IDS.pro price exactly as before.
       const res = await api.post<{
         data: { clientSecret: string; sessionId: string };
-      }>("/billing/create-checkout-session", { plan });
+      }>("/billing/create-checkout-session", {
+        plan,
+        ...(v2 && plan === "pro" ? { billingPeriod } : {}),
+      });
       return res.data.data.clientSecret;
     } catch (err: unknown) {
       setSessionError(
@@ -566,7 +684,7 @@ function BillingStep({
       );
       return "";
     }
-  }, [plan]);
+  }, [plan, v2, billingPeriod]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -643,7 +761,7 @@ function BillingStep({
               FREE FOR 14 DAYS
             </div>
             <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-              then {meta.price}/mo
+              then {meta.price} {meta.cadence}
             </div>
           </div>
         </div>
@@ -718,14 +836,18 @@ function BillingStep({
 
 function ConfirmStep({
   plan,
+  v2,
+  billingPeriod,
   profileData,
   onFinish,
 }: {
   plan: PlanKey;
+  v2: boolean;
+  billingPeriod: BillingPeriod;
   profileData: ProfileData | null;
   onFinish: () => void;
 }) {
-  const meta = PLAN_META[plan];
+  const meta = planDisplay(plan, v2, billingPeriod);
 
   return (
     <div
@@ -844,17 +966,25 @@ function ConfirmStep({
 
 function PlanStep({
   initialPlan,
+  v2,
+  billingPeriod,
+  onBillingPeriodChange,
   onSelect,
   onBack,
 }: {
   initialPlan: PlanKey;
+  v2: boolean;
+  billingPeriod: BillingPeriod;
+  onBillingPeriodChange: (period: BillingPeriod) => void;
   onSelect: (plan: PlanKey) => void;
   onBack: () => void;
 }) {
   const [selected, setSelected] = useState<PlanKey>(
     initialPlan === "starter" ? "collector" : initialPlan,
   );
-  const paid: PlanKey[] = ["collector", "pro"];
+  // v2 retires the Collector tier from display entirely (§7: Free + Pro
+  // only) — Pro is the sole paid option once the flag is on.
+  const paid: PlanKey[] = v2 ? ["pro"] : ["collector", "pro"];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -880,8 +1010,21 @@ function PlanStep({
         </p>
       </div>
 
+      {v2 && (
+        <ToggleGroup
+          label='Billing'
+          hint='Annual saves ~28% vs. monthly'
+          options={[
+            { value: "monthly", label: "Monthly" },
+            { value: "annual", label: "Annual" },
+          ]}
+          value={billingPeriod}
+          onChange={(val) => onBillingPeriodChange(val as BillingPeriod)}
+        />
+      )}
+
       {paid.map((key) => {
-        const meta = PLAN_META[key];
+        const meta = planDisplay(key, v2, billingPeriod);
         const isSel = selected === key;
         return (
           <button
@@ -1015,7 +1158,7 @@ function PlanStep({
           fontFamily: "inherit",
         }}
       >
-        Continue with Starter (free)
+        {v2 ? "Continue with Free" : "Continue with Starter (free)"}
       </button>
 
       <button
@@ -1041,9 +1184,20 @@ function OnboardingFlow() {
   const searchParams = useSearchParams();
   const planParam = (searchParams.get("plan") ?? "collector") as PlanKey;
   const initialPlan: PlanKey = PLAN_META[planParam] ? planParam : "collector";
+  // billingPeriod param carried from the marketing page's CTA
+  // (/register?plan=pro&billingPeriod=annual), same pattern as ?plan=.
+  // Only meaningful once v2 is on and plan is "pro"; annual-defaulted to
+  // match mobile paywall.tsx's showProPricingV2 toggle default.
+  const billingPeriodParam = searchParams.get("billingPeriod");
+  const initialBillingPeriod: BillingPeriod =
+    billingPeriodParam === "monthly" ? "monthly" : "annual";
 
+  const v2 = useFlag("pro_pricing_v2");
   const [step, setStep] = useState<Step>("profile");
   const [plan, setPlan] = useState<PlanKey>(initialPlan);
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(
+    initialBillingPeriod,
+  );
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const isPaid = plan !== "starter";
 
@@ -1092,7 +1246,7 @@ function OnboardingFlow() {
     <div>
       <StepIndicator current={step} plan={plan} />
       {(step === "billing" || step === "confirm") && (
-        <PlanSummaryCard plan={plan} />
+        <PlanSummaryCard plan={plan} v2={v2} billingPeriod={billingPeriod} />
       )}
 
       <div
@@ -1107,6 +1261,9 @@ function OnboardingFlow() {
         {step === "plan" && (
           <PlanStep
             initialPlan={initialPlan}
+            v2={v2}
+            billingPeriod={billingPeriod}
+            onBillingPeriodChange={setBillingPeriod}
             onSelect={handlePlanSelect}
             onBack={() => setStep("profile")}
           />
@@ -1114,6 +1271,8 @@ function OnboardingFlow() {
         {step === "billing" && isPaid && (
           <BillingStep
             plan={plan}
+            v2={v2}
+            billingPeriod={billingPeriod}
             onNext={handleBillingNext}
             onBack={() => setStep("plan")}
           />
@@ -1121,6 +1280,8 @@ function OnboardingFlow() {
         {step === "confirm" && (
           <ConfirmStep
             plan={plan}
+            v2={v2}
+            billingPeriod={billingPeriod}
             profileData={profileData}
             onFinish={handleFinish}
           />
@@ -1132,20 +1293,30 @@ function OnboardingFlow() {
 
 export default function OnboardingPage() {
   return (
-    <Suspense
-      fallback={
-        <div
-          style={{
-            color: "var(--text-secondary)",
-            textAlign: "center",
-            padding: 40,
-          }}
-        >
-          Loading...
-        </div>
-      }
-    >
-      <OnboardingFlow />
-    </Suspense>
+    // PlanProvider scoped to this page only, not the shared (auth) layout
+    // — /login and /register (also under (auth)) have no session yet, and
+    // PlanContext's GET /me/plan would just 401 there. By the time a user
+    // reaches onboarding they're already signed in (register.tsx's
+    // supabase.auth.signUp already ran), so it's safe here. Degrades
+    // gracefully either way — PlanContext swallows fetch failures and
+    // useFlag returns false while loading/on error (see its own header
+    // comment), so a failed fetch just means the legacy UI renders.
+    <PlanProvider>
+      <Suspense
+        fallback={
+          <div
+            style={{
+              color: "var(--text-secondary)",
+              textAlign: "center",
+              padding: 40,
+            }}
+          >
+            Loading...
+          </div>
+        }
+      >
+        <OnboardingFlow />
+      </Suspense>
+    </PlanProvider>
   );
 }
