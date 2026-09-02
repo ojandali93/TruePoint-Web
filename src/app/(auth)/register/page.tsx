@@ -10,7 +10,12 @@ import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { ROUTES } from "../../../constants/routes";
 import api from "../../../lib/api";
-import { getAnalyticsAnonymousId, identifySignup } from "../../../lib/analytics";
+import {
+  captureAnalyticsEvent,
+  getAnalyticsAnonymousId,
+  identifySignup,
+} from "../../../lib/analytics";
+import { ANALYTICS_EVENTS } from "../../../lib/analyticsEvents";
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -204,6 +209,10 @@ function RegisterForm() {
 
   const onSubmit = async (data: FormData) => {
     setServerError(null);
+    captureAnalyticsEvent(ANALYTICS_EVENTS.SIGNUP_STARTED, {
+      screen: "register",
+      method: "email",
+    });
     try {
       // Optional affiliate code — passed as user metadata so the
       // handle_new_user DB trigger can write it onto the profile row at
@@ -263,6 +272,10 @@ function RegisterForm() {
         });
       }
       identifySignup(authData.user.id, { method: "email" });
+      captureAnalyticsEvent(ANALYTICS_EVENTS.SIGNUP_COMPLETED, {
+        screen: "register",
+        method: "email",
+      });
 
       // Always go to onboarding. Email verification happens at the END of
       // onboarding (after Stripe), not before signup.
