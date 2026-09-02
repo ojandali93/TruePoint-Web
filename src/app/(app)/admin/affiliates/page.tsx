@@ -32,6 +32,11 @@ interface Affiliate {
   rejected_at?: string | null;
   user_id?: string | null;
   source?: string | null;
+  // Phase 2 (AUDITS/affiliate-system-plan.md) — flat rate-per-referred-user
+  // commission model. Always present (migration default 0.20 / 12), unlike
+  // the legacy collector_rate/pro_rate pair above which these supersede.
+  commission_rate: number;
+  commission_window_months: number;
 }
 
 interface SocialsForm {
@@ -1299,7 +1304,7 @@ export default function ManageAffiliatesPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1.4fr 90px 1.3fr 80px 100px 110px",
+              gridTemplateColumns: "1.3fr 80px 1.1fr 70px 70px 70px 90px 160px",
               padding: "10px 18px",
               background: "var(--surface-2)",
               borderBottom: "1px solid var(--border)",
@@ -1312,6 +1317,8 @@ export default function ManageAffiliatesPage() {
             <span>NAME</span>
             <span>TYPE</span>
             <span>CONTACT</span>
+            <span>RATE</span>
+            <span>WINDOW</span>
             <span>SIGNUPS</span>
             <span>STATUS</span>
             <span></span>
@@ -1346,7 +1353,7 @@ export default function ManageAffiliatesPage() {
                   key={a.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.4fr 90px 1.3fr 80px 100px 110px",
+                    gridTemplateColumns: "1.3fr 80px 1.1fr 70px 70px 70px 90px 160px",
                     padding: "12px 18px",
                     borderBottom: "1px solid var(--border)",
                     alignItems: "center",
@@ -1399,6 +1406,24 @@ export default function ManageAffiliatesPage() {
                   </span>
                   <span
                     style={{
+                      color: "var(--text-secondary)",
+                      fontFamily: "DM Mono, monospace",
+                      fontSize: 12,
+                    }}
+                  >
+                    {Math.round(a.commission_rate * 100)}%
+                  </span>
+                  <span
+                    style={{
+                      color: "var(--text-secondary)",
+                      fontFamily: "DM Mono, monospace",
+                      fontSize: 12,
+                    }}
+                  >
+                    {a.commission_window_months}mo
+                  </span>
+                  <span
+                    style={{
                       color: a.signup_count ? "var(--gold)" : "var(--text-dim)",
                       fontFamily: "DM Mono, monospace",
                     }}
@@ -1431,6 +1456,21 @@ export default function ManageAffiliatesPage() {
                       justifyContent: "flex-end",
                     }}
                   >
+                    <button
+                      onClick={() => router.push(`/admin/affiliates/${a.id}`)}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: 6,
+                        border: "1px solid rgba(201,168,76,0.4)",
+                        background: "transparent",
+                        color: "var(--gold)",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      Ledger
+                    </button>
                     <button
                       onClick={() => openEdit(a)}
                       style={{
