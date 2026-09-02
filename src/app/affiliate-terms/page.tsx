@@ -260,11 +260,17 @@ export default function AffiliateTermsPage() {
         </Section>
 
         <Section id='commission' title='5. Commission Structure'>
+          {/* AUDITS/affiliate-system-plan.md \u00a71/\u00a77 \u2014 updated to the
+              approved flat-rate model. [Bracketed]/placeholder status
+              unchanged from the rest of this document \u2014 still pending
+              Omar's final terms + legal review, not just this section. */}
           <Clause n='5.1'>
-            Subject to the remainder of this Agreement, the Affiliate earns, per
-            billing period, for each Referred Account that is an active paying
-            subscriber during that period, the following percentage of Net
-            Collected Subscription Revenue from that account:
+            Subject to the remainder of this Agreement, the Affiliate earns 20%
+            of Net Collected Subscription Revenue from each Referred Account
+            that becomes an active paying subscriber, for 12 months following
+            that account&apos;s first payment (not from the date the account was
+            referred). [Rate and window subject to change before this program
+            opens beyond an early access group.]
           </Clause>
 
           <div
@@ -276,8 +282,7 @@ export default function AffiliateTermsPage() {
             }}
           >
             {[
-              ["Collector", "5%", "Net Collected Subscription Revenue"],
-              ["Pro", "7%", "Net Collected Subscription Revenue"],
+              ["All paid plans", "20%", "Net Collected Subscription Revenue, for 12 months per referral"],
               ["Starter (free)", "None", "\u2014"],
             ].map((row, i) => (
               <div

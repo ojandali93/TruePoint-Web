@@ -9,6 +9,14 @@
 // - Logged in   → member application, prefilled from the session; the backend
 //   trusts the session for identity. If they already have an affiliate record,
 //   we show their status instead of the form.
+//
+// Flag-gated (affiliate_program) for the LOGGED-IN path only — checked via
+// GET /me/plan's flags once we know who's asking. Flags are resolved per
+// user (resolveFlagsForUser); there's no user to check pre-auth for a
+// guest, so the guest branch is unaffected by this flag — mitigated by
+// this page staying unlinked from any live nav while the flag is off, the
+// same way it already was before the flag existed (see
+// featureFlagKeys.ts's AFFILIATE_PROGRAM entry for the full reasoning).
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -16,8 +24,10 @@ import { createClient } from "../../lib/supabase";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import api from "../../lib/api";
+import { captureAnalyticsEvent } from "../../lib/analytics";
+import { ANALYTICS_EVENTS } from "../../lib/analyticsEvents";
 
-type Phase = "loading" | "form" | "already" | "submitted";
+type Phase = "loading" | "form" | "already" | "submitted" | "not_available";
 
 interface Socials {
   instagram: string;
@@ -39,24 +49,28 @@ function apiError(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
+// AUDITS/affiliate-system-plan.md §1/§7 — the approved commission model.
+// [Bracketed] values below are still placeholders (same convention as
+// affiliate-terms/page.tsx) pending Omar writing the real program terms —
+// do not treat any of this copy as final or legally reviewed.
 const TERMS = [
   [
-    "5% / 7% commission",
-    "Earn 5% on Collector and 7% on Pro from members who join with your code — on revenue actually collected, net of fees.",
+    "20% of net revenue",
+    "Earn 20% of net revenue (after payment-processor fees and refunds) from every member who joins with your code — for 12 months from their first payment.",
   ],
   ["No commission on free", "Free Starter accounts don't generate commission."],
   [
-    "Paid via PayPal",
-    "Paid monthly once your balance reaches $75 (held ~30 days to cover refunds).",
+    "Paid monthly in arrears",
+    "Paid out for the previous month's earned commission once your balance reaches $50 — below that, it rolls forward to the next month. [Payout method TBD]",
   ],
   [
-    "Recurring",
-    "You keep earning for as long as a referred member stays subscribed.",
+    "12 months per referral",
+    "Commission runs for 12 months from each referred member's first payment, not from when they signed up.",
   ],
   ["Pro, free", "Approved affiliates get a complimentary Pro account."],
   [
-    "Payouts open July 2026",
-    "Add your PayPal in your affiliate dashboard around July 1, 2026.",
+    "Full terms",
+    "The complete, legally-reviewed program terms will be linked here before this program opens beyond an early access group. [Terms pending]",
   ],
 ];
 
@@ -98,6 +112,24 @@ export default function AffiliatesPage() {
         setEmail(u.email ?? "");
         setPhone((u.user_metadata?.phone as string) ?? "");
       }
+
+      // Flag check — a logged-in, non-allowlisted visitor sees
+      // "not available yet" instead of the form/dashboard, regardless of
+      // whether they already have an application (see header comment).
+      try {
+        const planRes = await api.get("/me/plan");
+        const flagOn = planRes.data?.flags?.affiliate_program === true;
+        if (!flagOn) {
+          if (!cancelled) setPhase("not_available");
+          return;
+        }
+      } catch {
+        // Fails closed, same posture as isFlagEnabled server-side — an
+        // unresolved flag state should never show the real form.
+        if (!cancelled) setPhase("not_available");
+        return;
+      }
+
       try {
         const r = await api.get("/affiliates/me");
         const aff = r.data?.data;
@@ -129,6 +161,10 @@ export default function AffiliatesPage() {
       return;
     }
     setSubmitting(true);
+    captureAnalyticsEvent(ANALYTICS_EVENTS.AFFILIATE_APPLY_TAPPED, {
+      screen: "affiliates",
+      source: isMember ? "member" : "guest",
+    });
     try {
       const cleanSocials: Record<string, string> = {};
       (Object.keys(socials) as (keyof Socials)[]).forEach((k) => {
@@ -253,6 +289,38 @@ export default function AffiliatesPage() {
           {phase === "loading" && (
             <div style={{ color: "var(--text-dim)", fontSize: 14 }}>
               Loading…
+            </div>
+          )}
+
+          {phase === "not_available" && (
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 14,
+                padding: "28px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
+                  marginBottom: 8,
+                }}
+              >
+                Applications aren&apos;t open yet
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  color: "var(--text-secondary)",
+                  lineHeight: 1.6,
+                }}
+              >
+                We&apos;re still finishing the affiliate program before opening it
+                up. Check back soon.
+              </div>
             </div>
           )}
 

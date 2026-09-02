@@ -339,25 +339,32 @@ function ClaimForm() {
             color: "var(--text-secondary)",
           }}
         >
+          {/* AUDITS/affiliate-system-plan.md §1/§7 — same fix as
+              affiliates/page.tsx and affiliate-terms/page.tsx (found in
+              the same sweep, 2026-09-02). [Bracketed]/placeholder status
+              matches the rest of the program's terms — pending Omar's
+              final copy + legal review, not just this page. */}
           <li>
-            Earn <strong>5%</strong> on Collector and <strong>7%</strong> on Pro
-            from members who join with your code — on revenue actually
-            collected, net of fees.
+            Earn <strong>20%</strong> of net revenue from members who join
+            with your code, for <strong>12 months</strong> from their first
+            payment.
           </li>
           <li>No commission on free accounts.</li>
           <li>
-            Paid monthly via <strong>PayPal</strong> once your balance reaches{" "}
-            <strong>$75</strong> (held ~30 days to cover refunds).
+            Paid monthly in arrears once your balance reaches{" "}
+            <strong>$50</strong> — below that, it rolls forward. [Payout
+            method TBD]
           </li>
           <li>
-            You keep earning for as long as a referred member stays subscribed.
+            You keep earning for up to 12 months per referral, even after
+            that member cancels and resubscribes.
           </li>
           <li>
             You get <strong>Pro free</strong> as a partner.
           </li>
           <li>
-            Payout setup (adding your PayPal) opens around{" "}
-            <strong>July 1, 2026</strong> in your affiliate dashboard.
+            Full payout details will be confirmed before your first payment
+            is due. [Terms pending]
           </li>
         </ul>
         <a

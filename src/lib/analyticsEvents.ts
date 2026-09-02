@@ -30,6 +30,15 @@ export const ANALYTICS_EVENTS = {
   PURCHASE_COMPLETED: "purchase_completed",
   PERMISSION_DENIED: "permission_denied",
   COMMUNITY_LINK_TAPPED: "community_link_tapped",
+
+  // Affiliate + referral programs (added post-taxonomy, own request —
+  // AUDITS/affiliate-system-plan.md / AUDITS/referral-program-plan.md —
+  // same infra as community_link_tapped above).
+  AFFILIATE_APPLY_TAPPED: "affiliate_apply_tapped",
+  AFFILIATE_CODE_COPIED: "affiliate_code_copied",
+  AFFILIATE_LINK_SHARED: "affiliate_link_shared",
+  REFERRAL_CODE_COPIED: "referral_code_copied",
+  REFERRAL_CODE_SHARED: "referral_code_shared",
 } as const;
 
 export type AnalyticsEventName =
