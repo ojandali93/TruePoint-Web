@@ -11,6 +11,7 @@ import { Input } from "../../../components/ui/Input";
 import { ROUTES } from "../../../constants/routes";
 import api from "../../../lib/api";
 import { getRefCookie } from "../../../lib/referral";
+import { useTrialDays } from "../../../hooks/useTrialDays";
 import {
   captureAnalyticsEvent,
   getAnalyticsAnonymousId,
@@ -197,6 +198,10 @@ function RegisterForm() {
   const [step, setStep] = useState<"form" | "verify">("form");
   const [submittedEmail, setSubmittedEmail] = useState("");
   const supabase = createClient();
+  // Single source of truth — see useTrialDays.ts. Replaced a hardcoded
+  // "14-day" that happened to be correct here but had no mechanism
+  // keeping it that way.
+  const trialDays = useTrialDays();
 
   const {
     register,
@@ -439,7 +444,7 @@ function RegisterForm() {
           >
             {plan === "starter"
               ? "Free forever — no credit card required."
-              : "Start your 14-day free trial. Cancel anytime."}
+              : `Start your ${trialDays}-day free trial. Cancel anytime.`}
           </p>
         </div>
 

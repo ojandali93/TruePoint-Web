@@ -13,6 +13,7 @@ import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { ROUTES } from "../../../constants/routes";
 import api from "../../../lib/api";
+import { useTrialDays } from "../../../hooks/useTrialDays";
 import { createClient } from "../../../lib/supabase";
 import { PlanProvider, useFlag } from "../../../context/PlanContext";
 
@@ -655,6 +656,9 @@ function BillingStep({
 }) {
   const meta = planDisplay(plan, v2, billingPeriod);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  // Single source of truth for the trial length shown below — see
+  // useTrialDays.ts's own header for why this replaced a hardcoded "14".
+  const trialDays = useTrialDays();
 
   // Only load Stripe when this component mounts — not at module level
   const stripePromise = useMemo(
@@ -706,8 +710,8 @@ function BillingStep({
             lineHeight: 1.6,
           }}
         >
-          14 days free — you won&apos;t be charged until your trial ends. Cancel
-          anytime.
+          {trialDays} days free — you won&apos;t be charged until your trial
+          ends. Cancel anytime.
         </p>
       </div>
 
@@ -746,7 +750,7 @@ function BillingStep({
                 marginTop: 2,
               }}
             >
-              14-day free trial
+              {trialDays}-day free trial
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -985,6 +989,10 @@ function PlanStep({
   // v2 retires the Collector tier from display entirely (§7: Free + Pro
   // only) — Pro is the sole paid option once the flag is on.
   const paid: PlanKey[] = v2 ? ["pro"] : ["collector", "pro"];
+  // Single source of truth — this screen previously hardcoded "7", which
+  // contradicted BillingStep's "14" one step later in the same flow (both
+  // now read the same live value). See useTrialDays.ts.
+  const trialDays = useTrialDays();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1006,7 +1014,7 @@ function PlanStep({
             lineHeight: 1.6,
           }}
         >
-          Start with a 7-day free trial. Cancel anytime.
+          Start with a {trialDays}-day free trial. Cancel anytime.
         </p>
       </div>
 
@@ -1117,7 +1125,7 @@ function PlanStep({
                     fontWeight: 600,
                   }}
                 >
-                  7-day free trial
+                  {trialDays}-day free trial
                 </div>
               </div>
             </div>
@@ -1143,7 +1151,7 @@ function PlanStep({
         onClick={() => onSelect(selected)}
         style={{ marginTop: 4 }}
       >
-        Start 7-day free trial
+        Start {trialDays}-day free trial
       </Button>
 
       <button

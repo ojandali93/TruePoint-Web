@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../lib/supabase";
 import { ROUTES } from "../constants/routes";
 import { useEffect, useState } from "react";
+import { useTrialDays } from "../hooks/useTrialDays";
 
 // Support inbox for the marketing site contact form.
 const SUPPORT_EMAIL = "support@reverseholo.io";
@@ -598,6 +599,8 @@ export default function LandingPage() {
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">(
     "annual",
   );
+  // Single source of truth — see useTrialDays.ts.
+  const trialDays = useTrialDays();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1753,8 +1756,8 @@ export default function LandingPage() {
                 marginTop: 20,
               }}
             >
-              14-day free trial of Pro included. No credit card required for
-              Free.
+              {trialDays}-day free trial of Pro included. No credit card
+              required for Free.
             </p>
 
             {/* Monthly/annual toggle — only meaningfully changes the Pro
