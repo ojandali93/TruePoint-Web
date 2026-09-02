@@ -3585,6 +3585,22 @@ export default function AdminPage() {
             MANAGEMENT
           </span>
           <button
+            onClick={() => router.push("/admin/users")}
+            style={{
+              padding: "7px 14px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Users ↗
+          </button>
+          <button
             onClick={() => router.push("/admin/affiliates")}
             style={{
               padding: "7px 14px",
