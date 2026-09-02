@@ -437,17 +437,27 @@ const ROADMAP = [
 // not just a stale number — both are free-tier-accessible today. Pro
 // price corrected from a stale $24.99 to the decided $14.99/mo (§7).
 //
-// NOTE: this is the legacy 3-tier display, unconditional (not flag-gated)
-// — this page is public/anonymous with no PlanProvider in its tree
-// (PlanContext's GET /me/plan requires a session), so it can't cleanly
-// read pro_pricing_v2 the way the authenticated onboarding flow can.
-// Flagged for Omar: once pro_pricing_v2 reaches "everyone", this page's
-// copy needs a follow-up content update to the new Free/Pro structure —
-// not dynamic per-visitor gating, a straightforward static copy change at
-// that time.
+// 2-tier display (Free + Pro), matching the pro_pricing_v2 structure that
+// UX_OVERHAUL_PLAN.md §7 Phase 1 gate 6 shipped everywhere else (mobile
+// paywall.tsx, the authenticated onboarding flow's PLAN_META_V2) — that
+// flag reached "everyone" 2026-09-01/02 (confirmed live via
+// truepoint-server/scripts/auditFeatureFlags.ts), so the legacy 3-tier
+// Starter/Collector/Pro display this comment used to defer on is now
+// stale, not just eventually-stale. Copy/numbers mirror
+// onboarding/page.tsx's PLAN_META_V2 exactly rather than being
+// re-derived — that's the source of truth for this pricing shape, this
+// page just can't read the flag live (no PlanProvider in its tree, this
+// route is public/anonymous) so it stays a static mirror, same reasoning
+// as before, just pointed at the current structure instead of the
+// retired one.
+//
+// `key` is the real PlanKey the register/onboarding flow expects
+// (register?plan=starter, not plan=free — "Free" is display-only, the
+// underlying plan is still "starter"); `name` is what's shown on the card.
 const PLANS = [
   {
-    name: "Starter",
+    key: "starter",
+    name: "Free",
     price: "$0",
     cadence: "forever",
     badge: "FREE",
@@ -455,59 +465,44 @@ const PLANS = [
     featured: false,
     cta: "Get started free",
     features: [
-      { text: "Reverse Holo centering score", included: true },
-      { text: "AI grading reports", included: true, note: "5/mo" },
-      { text: "Submission tracking", included: true, note: "5 active" },
-      { text: "Master set tracker", included: true, note: "5 sets" },
       { text: "Card search & live prices", included: true },
       { text: "Set browser", included: true },
-      { text: "Inventory tracking", included: true },
-      { text: "Portfolio dashboard", included: false },
+      { text: "Reverse Holo centering score", included: true },
+      { text: "AI grading reports", included: true, note: "5/mo" },
+      { text: "Regrade arbitrage", included: true, note: "15/mo" },
+      { text: "Submission tracking", included: true, note: "5 active" },
+      { text: "Master set tracker", included: true, note: "5 sets" },
+      { text: "Watchlist + price alerts", included: true, note: "5 cards" },
+      { text: "Import", included: true, note: "unlimited, always free" },
     ],
   },
   {
-    name: "Collector",
-    price: "$9.99",
+    key: "pro",
+    name: "Pro",
+    // price/cadence for this card are computed from the billing-period
+    // toggle at render time (see PLANS.map below) — these two are the
+    // fallback/monthly values, only used if that lookup somehow misses.
+    price: "$14.99",
     cadence: "per month",
     badge: "MOST POPULAR",
     badgeColor: "#C9A84C",
     featured: true,
-    cta: "Start Collector plan",
-    features: [
-      { text: "Everything in Starter", included: true },
-      { text: "AI grading reports", included: true, note: "5/mo" },
-      { text: "Submission tracking", included: true, note: "5 active" },
-      { text: "Regrade arbitrage", included: true, note: "15/mo" },
-      { text: "Master set tracker", included: true, note: "unlimited" },
-      { text: "Singles & graded inventory", included: true },
-      { text: "Price alerts", included: true, note: "5 cards" },
-      { text: "Full portfolio dashboard", included: false },
-      { text: "Sealed collection tracking", included: false },
-      { text: "Pack opening analytics", included: false },
-    ],
-  },
-  {
-    name: "Pro",
-    price: "$14.99",
-    cadence: "per month",
-    badge: "PRO",
-    badgeColor: "#BA7517",
-    featured: false,
     cta: "Start Pro plan",
     features: [
-      { text: "Everything in Collector", included: true },
+      { text: "Everything in Free", included: true },
       { text: "AI grading reports", included: true, note: "unlimited" },
-      { text: "Submission tracking", included: true, note: "unlimited" },
       { text: "Regrade arbitrage", included: true, note: "unlimited" },
-      { text: "Sealed collection tracking", included: true },
-      { text: "Full portfolio dashboard", included: true },
+      { text: "Submission tracking", included: true, note: "unlimited" },
       {
-        text: "P&L and cost basis tracking",
-        included: false,
-        note: "coming soon",
+        text: "Full portfolio dashboard",
+        included: true,
+        note: "movers, attribution, history",
       },
-      { text: "Pack opening analytics", included: false, note: "coming soon" },
-      { text: "Price alerts", included: true, note: "unlimited" },
+      {
+        text: "Master sets, watchlist, price alerts",
+        included: true,
+        note: "unlimited",
+      },
       { text: "Early access to new features", included: true },
     ],
   },
@@ -598,6 +593,11 @@ function ContactForm() {
 export default function LandingPage() {
   const router = useRouter();
   const supabase = createClient();
+  // Annual-defaulted to match mobile paywall.tsx / onboarding's own
+  // showProPricingV2 toggle default.
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">(
+    "annual",
+  );
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1931,18 +1931,70 @@ export default function LandingPage() {
               }}
             >
               14-day free trial of Pro included. No credit card required for
-              Starter.
+              Free.
             </p>
+
+            {/* Monthly/annual toggle — only meaningfully changes the Pro
+                card's price, but shown above the grid the same way
+                onboarding's own BillingStep does. */}
+            <div
+              style={{
+                display: "inline-flex",
+                marginTop: 28,
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: 4,
+                gap: 4,
+              }}
+            >
+              {(["monthly", "annual"] as const).map((period) => (
+                <button
+                  key={period}
+                  onClick={() => setBillingPeriod(period)}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 7,
+                    border: "none",
+                    fontSize: 13,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                    background:
+                      billingPeriod === period ? "var(--gold)" : "transparent",
+                    color:
+                      billingPeriod === period
+                        ? "#0D0E11"
+                        : "var(--text-secondary)",
+                    fontWeight: billingPeriod === period ? 600 : 400,
+                  }}
+                >
+                  {period === "monthly" ? "Monthly" : "Annual — save ~28%"}
+                </button>
+              ))}
+            </div>
           </div>
           <div
             className='landing-pricing-grid'
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
+              gridTemplateColumns: "repeat(2, 1fr)",
+              maxWidth: 720,
+              margin: "0 auto",
               gap: 16,
             }}
           >
-            {PLANS.map((plan, i) => (
+            {PLANS.map((plan, i) => {
+              // Only Pro has a monthly/annual choice — annual pricing +
+              // cadence match onboarding/page.tsx's PLAN_META_V2.pro
+              // exactly, not re-derived.
+              const displayPrice =
+                plan.key === "pro" && billingPeriod === "annual"
+                  ? "$129.99"
+                  : plan.price;
+              const displayCadence =
+                plan.key === "pro" && billingPeriod === "annual"
+                  ? "per year (~$10.83/mo)"
+                  : plan.cadence;
+              return (
               <div
                 key={i}
                 style={{
@@ -2010,7 +2062,7 @@ export default function LandingPage() {
                     marginBottom: 4,
                   }}
                 >
-                  {plan.price}
+                  {displayPrice}
                 </div>
                 <div
                   style={{
@@ -2019,7 +2071,7 @@ export default function LandingPage() {
                     marginBottom: 28,
                   }}
                 >
-                  {plan.cadence}
+                  {displayCadence}
                 </div>
                 <div
                   style={{
@@ -2099,7 +2151,11 @@ export default function LandingPage() {
                   ))}
                 </div>
                 <Link
-                  href={`/register?plan=${plan.name.toLowerCase()}`}
+                  href={
+                    plan.key === "pro"
+                      ? `/register?plan=pro&billingPeriod=${billingPeriod}`
+                      : `/register?plan=${plan.key}`
+                  }
                   className={plan.featured ? "btn-primary" : "btn-secondary"}
                   style={{
                     display: "block",
@@ -2110,7 +2166,8 @@ export default function LandingPage() {
                   {plan.cta}
                 </Link>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>

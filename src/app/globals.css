@@ -762,7 +762,7 @@ body {
     grid-template-columns: 1fr !important;
   }
 
-  /* ── Pricing 3-col → 1 col ─────────────────────────────────────────────── */
+  /* ── Pricing 2-col → 1 col ─────────────────────────────────────────────── */
   .landing-pricing-grid {
     grid-template-columns: 1fr !important;
   }
