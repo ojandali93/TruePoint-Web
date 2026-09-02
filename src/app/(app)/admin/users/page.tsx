@@ -3,11 +3,18 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "../../../../lib/api";
 
+// User portal consolidation (2026-09-02) — this list absorbed the columns
+// (email-verified, last login) that used to live only in the separate
+// "Users" tab on /admin (PlatformUsers, now deleted). This is the single
+// user list now — the old tab's own list is gone, not duplicated.
+
 interface UserRow {
   id: string;
   username: string | null;
   full_name: string | null;
   created_at: string;
+  email_verified?: boolean;
+  last_login_at?: string | null;
   subscription: { plan: string; status: string }[];
 }
 
@@ -20,6 +27,7 @@ const PLAN_COLOR: Record<string, string> = {
 export default function AdminUsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +41,7 @@ export default function AdminUsersPage() {
         { params: q ? { search: q, limit: 50 } : { limit: 50 } },
       );
       setUsers(r.data.data.users ?? []);
+      setTotal(r.data.data.total ?? 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load users.");
     } finally {
@@ -92,13 +101,14 @@ export default function AdminUsersPage() {
           Users
         </h1>
         <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
-          Search by name, username, or email — opens each user&apos;s AI
-          grading, centering, and collection drill-down.
+          {loading ? "Loading…" : `${total.toLocaleString()} total`} — opens
+          each user&apos;s account, plan, AI grading, centering, and
+          collection in one portal.
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ padding: "28px 40px", maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ padding: "28px 40px", maxWidth: 1100, margin: "0 auto" }}>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -133,44 +143,73 @@ export default function AdminUsersPage() {
           </div>
         )}
 
-        {loading ? (
-          <div style={{ color: "var(--text-dim)", fontSize: 13 }}>
-            Loading…
-          </div>
-        ) : users.length === 0 ? (
-          <div style={{ color: "var(--text-dim)", fontSize: 13 }}>
-            No users found.
-          </div>
-        ) : (
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
+              display: "grid",
+              gridTemplateColumns: "1.6fr 1.2fr 90px 110px 120px 120px",
+              padding: "9px 16px",
+              background: "var(--surface-2, var(--surface))",
+              borderBottom: "1px solid var(--border)",
+              fontSize: 10,
+              color: "var(--text-dim)",
+              fontFamily: "DM Mono, monospace",
+              letterSpacing: "0.06em",
             }}
           >
-            {users.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => router.push(`/admin/users/${u.id}`)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  padding: "14px 16px",
-                  borderRadius: 10,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  textAlign: "left",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div
+            <span>NAME</span>
+            <span>ID</span>
+            <span>PLAN</span>
+            <span>JOINED</span>
+            <span>EMAIL</span>
+            <span>LAST LOGIN</span>
+          </div>
+
+          {loading ? (
+            <div style={{ padding: "24px 16px", color: "var(--text-dim)", fontSize: 13 }}>
+              Loading…
+            </div>
+          ) : users.length === 0 ? (
+            <div style={{ padding: "24px 16px", color: "var(--text-dim)", fontSize: 13 }}>
+              No users found.
+            </div>
+          ) : (
+            users.map((u) => {
+              const plan = u.subscription?.[0]?.plan ?? "starter";
+              const verified = u.email_verified === true;
+              const lastLogin = u.last_login_at
+                ? new Date(u.last_login_at).toLocaleDateString()
+                : null;
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => router.push(`/admin/users/${u.id}`)}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.6fr 1.2fr 90px 110px 120px 120px",
+                    width: "100%",
+                    padding: "12px 16px",
+                    borderBottom: "1px solid var(--border)",
+                    borderTop: "none",
+                    borderLeft: "none",
+                    borderRight: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    textAlign: "left",
+                    alignItems: "center",
+                    fontSize: 12,
+                  }}
+                >
+                  <span
                     style={{
-                      fontSize: 14,
                       color: "var(--text-primary)",
                       fontWeight: 500,
                       overflow: "hidden",
@@ -179,31 +218,51 @@ export default function AdminUsersPage() {
                     }}
                   >
                     {u.full_name || u.username || u.id}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    {u.username ? `@${u.username}` : u.id}
-                  </div>
-                </div>
-                {(() => {
-                  const plan = u.subscription?.[0]?.plan ?? "starter";
-                  return (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontFamily: "DM Mono, monospace",
-                        color: PLAN_COLOR[plan] ?? "var(--text-dim)",
-                        textTransform: "uppercase",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {plan}
-                    </span>
-                  );
-                })()}
-              </button>
-            ))}
-          </div>
-        )}
+                  </span>
+                  <span
+                    style={{
+                      color: "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                      fontSize: 11,
+                    }}
+                  >
+                    {u.id.slice(0, 14)}…
+                  </span>
+                  <span
+                    style={{
+                      color: PLAN_COLOR[plan] ?? "var(--text-dim)",
+                      fontFamily: "DM Mono, monospace",
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {plan}
+                  </span>
+                  <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                    {new Date(u.created_at).toLocaleDateString()}
+                  </span>
+                  <span
+                    style={{
+                      color: verified ? "#10B981" : "#F59E0B",
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {verified ? "✓ Verified" : "Unverified"}
+                  </span>
+                  <span
+                    style={{
+                      color: lastLogin ? "var(--text-secondary)" : "#6B7280",
+                      fontSize: 11,
+                    }}
+                  >
+                    {lastLogin ?? "Never"}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );

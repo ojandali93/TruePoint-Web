@@ -3,6 +3,16 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import api from "../../../../../lib/api";
 
+// ─── User portal consolidation (2026-09-02) ─────────────────────────────────
+// One user portal, not two. This page absorbed everything that used to live
+// only in the separate "Users" tab on /admin (PlatformUsers, now deleted):
+// plan override (WITH the duration control — mobile's own version silently
+// omitted it and always granted indefinitely, which was the wrong behavior
+// to keep; this is the one true version now) and resend-verification. Tabs:
+// Account (profile, subscription + plan/resend actions, usage, devices,
+// error history) / Reports (AI grading + centering, unchanged from before)
+// / Collection (read-only inventory, unchanged from before).
+
 // ─── Types (server shapes — see adminPlatform.service.ts) ──────────────────────
 
 interface UserDetail {
@@ -11,15 +21,65 @@ interface UserDetail {
     username: string | null;
     full_name: string | null;
     avatar_url: string | null;
+    phone: string | null;
+    currency: string | null;
+    preferred_grading_company: string | null;
+    show_market_values: boolean | null;
+    favorite_pokemon: string | null;
+    favorite_set: string | null;
+    collecting_years: string | null;
+    collection_type: string | null;
+    collector_style: string | null;
+    email_verified: boolean | null;
+    email_verified_at: string | null;
+    affiliation: string | null;
+    affiliation_id: string | null;
     created_at: string;
+    updated_at: string | null;
   };
-  subscription: { plan: string; status: string } | null;
+  subscription: {
+    plan: string;
+    status: string;
+    platform: string;
+    trial_ends_at: string | null;
+    current_period_end: string | null;
+    created_at: string | null;
+    stripe_customer_id: string | null;
+    rc_app_user_id: string | null;
+  } | null;
+  affiliate: { id: string; name: string; slug: string | null; type: string; status: string } | null;
+  inventory: {
+    totalCards: number;
+    rawCards: number;
+    gradedCards: number;
+    sealedProducts: number;
+    marketValue: number;
+    costBasis: number;
+    gainLoss: number;
+  } | null;
   usage: {
     collections: number;
     masterSetsTracked: number;
     centeringReports: number;
     aiGradingReports: number;
     gradingSubmissions: number;
+    ebayReports: number;
+    feedbackSubmitted: number;
+    errorLogs: number;
+  };
+  activity: {
+    lastLoginAt: string | null;
+    deviceCount: number;
+    recentDevices: Array<{
+      device_type: string | null;
+      device_name: string | null;
+      os: string | null;
+      browser: string | null;
+      push_provider: string | null;
+      last_login_at: string | null;
+      last_seen: string | null;
+      is_active: boolean | null;
+    }>;
   };
 }
 
@@ -59,6 +119,18 @@ interface CollectionItem {
   marketValue: { marketPrice: number | null; source: string | null };
 }
 
+interface ErrorLogRow {
+  id: string;
+  created_at: string;
+  severity: string;
+  source: string;
+  message: string;
+  request_path: string | null;
+  resolved: boolean;
+}
+
+type Tab = "account" | "reports" | "collection";
+
 const cardStyle: React.CSSProperties = {
   background: "var(--surface)",
   border: "1px solid var(--border)",
@@ -73,63 +145,52 @@ const sectionTitleStyle: React.CSSProperties = {
   marginBottom: 4,
 };
 
+const money = (n: number | null | undefined): string =>
+  n == null
+    ? "—"
+    : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const dateStr = (s: string | null | undefined): string => (s ? new Date(s).toLocaleDateString() : "—");
+const dateTimeStr = (s: string | null | undefined): string => (s ? new Date(s).toLocaleString() : "Never");
+const titleCase = (s: string | null | undefined): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "—");
+
 export default function AdminUserDetailPage() {
   const router = useRouter();
   const params = useParams<{ userId: string }>();
   const userId = params.userId;
 
+  const [tab, setTab] = useState<Tab>("account");
+
   const [detail, setDetail] = useState<UserDetail | null>(null);
-  const [aiReports, setAiReports] = useState<AIGradingReportRow[]>([]);
-  const [centeringReports, setCenteringReports] = useState<
-    CenteringReportRow[]
-  >([]);
-  const [collection, setCollection] = useState<CollectionItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [collectionOpen, setCollectionOpen] = useState(false);
-  // /detail is independently slow for a large account -- it resolves live
-  // inventory valuation (getInventory) across every item, which can run
-  // well past axios's 10s default for a few-hundred-item collection. Found
-  // live-testing this page against a real 484-item account (Part B's own
-  // proof run) -- NOT a Part B regression, getUserDetail already did this;
-  // it just never had a real client with a real timeout exercise it before.
-  // Fetched on its own effect, with its own loading flag and a raised
-  // per-request timeout, so a slow profile header never blocks the (fast)
-  // report lists below from rendering.
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!userId) return;
-    let mounted = true;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [aiRes, centeringRes] = await Promise.all([
-          api.get<{ data: AIGradingReportRow[] }>(
-            `/admin/users/${userId}/ai-grading-reports`,
-          ),
-          api.get<{ data: CenteringReportRow[] }>(
-            `/admin/users/${userId}/centering-reports`,
-          ),
-        ]);
-        if (!mounted) return;
-        setAiReports(aiRes.data.data ?? []);
-        setCenteringReports(centeringRes.data.data ?? []);
-      } catch (e) {
-        if (mounted) {
-          setError(e instanceof Error ? e.message : "Failed to load user.");
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [userId]);
+  const [aiReports, setAiReports] = useState<AIGradingReportRow[]>([]);
+  const [centeringReports, setCenteringReports] = useState<CenteringReportRow[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [reportsError, setReportsError] = useState<string | null>(null);
 
+  const [collection, setCollection] = useState<CollectionItem[]>([]);
+  const [collectionLoaded, setCollectionLoaded] = useState(false);
+  const [collectionLoading, setCollectionLoading] = useState(false);
+
+  const [errorLogs, setErrorLogs] = useState<ErrorLogRow[]>([]);
+  const [errorLogsOpen, setErrorLogsOpen] = useState(false);
+  const [errorLogsLoading, setErrorLogsLoading] = useState(false);
+
+  // Plan override
+  const [planModal, setPlanModal] = useState(false);
+  const [newPlan, setNewPlan] = useState<"collector" | "pro">("collector");
+  const [durationMonths, setDurationMonths] = useState<number | null>(3);
+  const [planNote, setPlanNote] = useState("");
+  const [savingPlan, setSavingPlan] = useState(false);
+
+  // Resend verification
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  // /detail is independently slow for a large account (live inventory
+  // valuation across every item) — its own effect, own loading flag, own
+  // raised timeout, so it never blocks the (fast) report lists.
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
@@ -137,17 +198,10 @@ export default function AdminUserDetailPage() {
       setDetailLoading(true);
       setDetailError(null);
       try {
-        const r = await api.get<{ data: UserDetail }>(
-          `/admin/users/${userId}/detail`,
-          { timeout: 30000 },
-        );
+        const r = await api.get<{ data: UserDetail }>(`/admin/users/${userId}/detail`, { timeout: 30000 });
         if (mounted) setDetail(r.data.data);
       } catch (e) {
-        if (mounted) {
-          setDetailError(
-            e instanceof Error ? e.message : "Failed to load profile.",
-          );
-        }
+        if (mounted) setDetailError(e instanceof Error ? e.message : "Failed to load profile.");
       } finally {
         if (mounted) setDetailLoading(false);
       }
@@ -157,52 +211,105 @@ export default function AdminUserDetailPage() {
     };
   }, [userId]);
 
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      setReportsLoading(true);
+      setReportsError(null);
+      try {
+        const [aiRes, centeringRes] = await Promise.all([
+          api.get<{ data: AIGradingReportRow[] }>(`/admin/users/${userId}/ai-grading-reports`),
+          api.get<{ data: CenteringReportRow[] }>(`/admin/users/${userId}/centering-reports`),
+        ]);
+        if (!mounted) return;
+        setAiReports(aiRes.data.data ?? []);
+        setCenteringReports(centeringRes.data.data ?? []);
+      } catch (e) {
+        if (mounted) setReportsError(e instanceof Error ? e.message : "Failed to load reports.");
+      } finally {
+        if (mounted) setReportsLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [userId]);
+
   const loadCollection = async () => {
-    setCollectionOpen(true);
-    if (collection.length > 0) return; // already loaded
+    if (collectionLoaded) return;
+    setCollectionLoading(true);
     try {
-      const r = await api.get<{
-        data: { items: CollectionItem[] };
-      }>(`/admin/users/${userId}/collection`);
+      const r = await api.get<{ data: { items: CollectionItem[] } }>(`/admin/users/${userId}/collection`);
       setCollection(r.data.data.items ?? []);
+      setCollectionLoaded(true);
     } catch {
       // leave collection empty — the panel shows "no items" either way
+    } finally {
+      setCollectionLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ padding: 40, color: "var(--text-dim)", fontSize: 13 }}>
-        Loading…
-      </div>
-    );
-  }
+  const loadErrorLogs = async () => {
+    setErrorLogsOpen(true);
+    if (errorLogs.length > 0) return;
+    setErrorLogsLoading(true);
+    try {
+      const r = await api.get<{ data: ErrorLogRow[] }>(`/admin/users/${userId}/errors`);
+      setErrorLogs(r.data.data ?? []);
+    } catch {
+      // leave empty — the panel shows "no errors" either way
+    } finally {
+      setErrorLogsLoading(false);
+    }
+  };
 
-  if (error) {
-    return (
-      <div style={{ padding: 40 }}>
-        <div style={{ color: "#EF4444", fontSize: 13 }}>{error}</div>
-      </div>
-    );
-  }
+  const openPlanModal = () => {
+    setNewPlan((detail?.subscription?.plan as "collector" | "pro" | undefined) ?? "collector");
+    setDurationMonths(3);
+    setPlanNote("");
+    setPlanModal(true);
+  };
 
-  const displayName =
-    detail?.profile.full_name || detail?.profile.username || userId;
-  const plan = detail?.subscription?.plan ?? "starter";
+  const overridePlan = async () => {
+    setSavingPlan(true);
+    try {
+      await api.patch(`/admin/users/${userId}/plan`, { plan: newPlan, note: planNote, durationMonths });
+      setPlanModal(false);
+      // Refetch — the new plan/status should reflect immediately.
+      const r = await api.get<{ data: UserDetail }>(`/admin/users/${userId}/detail`, { timeout: 30000 });
+      setDetail(r.data.data);
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  const resendVerification = async () => {
+    setResendState("sending");
+    try {
+      const r = await api.post<{ data: { sent: boolean; alreadyVerified: boolean } }>(
+        `/admin/users/${userId}/resend-verification`,
+      );
+      setResendState("sent");
+      if (r.data.data.alreadyVerified && detail) {
+        setDetail({ ...detail, profile: { ...detail.profile, email_verified: true } });
+      }
+    } catch {
+      setResendState("error");
+    }
+  };
+
+  const p = detail?.profile;
+  const displayName = p?.full_name || p?.username || userId;
+  const sub = detail?.subscription;
+  const plan = sub?.plan ?? "starter";
+  const planColor = plan === "pro" ? "var(--gold)" : plan === "collector" ? "#3B82F6" : "#6B7280";
+  const verified = p?.email_verified === true;
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      {/* Header — its own loading/error state (detailLoading/detailError),
-          independent of the report lists below (see the two-effect split
-          above): a slow /detail response never blocks the rest of the
-          page from rendering. */}
-      <div
-        style={{
-          padding: "28px 40px",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--surface)",
-        }}
-      >
+      {/* Header */}
+      <div style={{ padding: "28px 40px", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
         <button
           onClick={() => router.push("/admin/users")}
           style={{
@@ -227,18 +334,9 @@ export default function AdminUserDetailPage() {
             marginBottom: 6,
           }}
         >
-          {detailLoading
-            ? "LOADING PROFILE…"
-            : `${plan.toUpperCase()}${detail?.subscription?.status ? ` · ${detail.subscription.status}` : ""}`}
+          {detailLoading ? "LOADING PROFILE…" : `${plan.toUpperCase()}${sub?.status ? ` · ${sub.status}` : ""}`}
         </div>
-        <h1
-          style={{
-            fontSize: 26,
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            marginBottom: 4,
-          }}
-        >
+        <h1 style={{ fontSize: 26, fontWeight: 500, color: "var(--text-primary)", marginBottom: 4 }}>
           {displayName}
         </h1>
         <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
@@ -246,118 +344,482 @@ export default function AdminUserDetailPage() {
             <span style={{ color: "#EF4444" }}>{detailError}</span>
           ) : detail ? (
             <>
-              {detail.profile.username ? `@${detail.profile.username} · ` : ""}
-              joined {new Date(detail.profile.created_at).toLocaleDateString()}
+              {p?.username ? `@${p.username} · ` : ""}
+              joined {dateStr(p?.created_at)}
             </>
           ) : (
             "Loading profile…"
           )}
         </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 4, marginTop: 20 }}>
+          {(
+            [
+              { key: "account" as const, label: "Account" },
+              { key: "reports" as const, label: "Reports" },
+              { key: "collection" as const, label: "Collection" },
+            ]
+          ).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: "8px 8px 0 0",
+                border: "none",
+                borderBottom: `2px solid ${tab === t.key ? "var(--gold)" : "transparent"}`,
+                background: "transparent",
+                color: tab === t.key ? "var(--gold)" : "var(--text-dim)",
+                fontSize: 13,
+                fontWeight: tab === t.key ? 500 : 400,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Body */}
-      <div
-        style={{
-          padding: "28px 40px",
-          maxWidth: 900,
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 20,
-        }}
-      >
-        {/* AI Grading Reports */}
-        <div style={cardStyle}>
-          <div style={sectionTitleStyle}>
-            AI Grading Reports ({aiReports.length})
-          </div>
-          <div
-            style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}
-          >
-            Date, card, and predicted grades — tap any row for the full report
-            as the user saw it.
-          </div>
-          {aiReports.length === 0 ? (
-            <EmptyRow label="No AI grading reports." />
-          ) : (
-            <RowList>
-              {aiReports.map((r) => (
-                <ReportRow
-                  key={r.id}
-                  onClick={() =>
-                    router.push(`/admin/users/${userId}/ai-grading/${r.id}`)
-                  }
-                  title={r.card_name || "Untitled card"}
-                  subtitle={r.set_name || undefined}
-                  right={
-                    r.status === "completed"
-                      ? `TP ${r.tp_score ?? r.overall_score ?? "—"}`
-                      : r.status
-                  }
-                  date={r.created_at}
-                />
-              ))}
-            </RowList>
-          )}
-        </div>
+      <div style={{ padding: "28px 40px", maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+        {tab === "account" && (
+          <>
+            {/* Usage tiles */}
+            <div style={cardStyle}>
+              <div style={sectionTitleStyle}>Activity &amp; Feature Usage</div>
+              {detail ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+                  <StatTile label="Collections" value={detail.usage.collections} />
+                  <StatTile label="Master sets tracked" value={detail.usage.masterSetsTracked} />
+                  <StatTile label="Grading submissions" value={detail.usage.gradingSubmissions} />
+                  <StatTile label="Centering reports" value={detail.usage.centeringReports} />
+                  <StatTile label="AI grading reports" value={detail.usage.aiGradingReports} />
+                  <StatTile label="eBay analyses" value={detail.usage.ebayReports} />
+                  <StatTile label="Feedback sent" value={detail.usage.feedbackSubmitted} />
+                  <StatTile
+                    label="Error logs"
+                    value={detail.usage.errorLogs}
+                    accent={detail.usage.errorLogs > 0 ? "#F59E0B" : undefined}
+                  />
+                  <StatTile label="Devices" value={detail.activity.deviceCount} />
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>Loading…</div>
+              )}
+              {detail?.inventory && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                  <StatTile label="Total cards" value={detail.inventory.totalCards.toLocaleString()} />
+                  <StatTile label="Market value" value={money(detail.inventory.marketValue)} accent="var(--gold)" />
+                  <StatTile
+                    label="Gain / loss"
+                    value={money(detail.inventory.gainLoss)}
+                    accent={detail.inventory.gainLoss >= 0 ? "#10B981" : "#EF4444"}
+                  />
+                </div>
+              )}
+            </div>
 
-        {/* Centering Reports */}
-        <div style={cardStyle}>
-          <div style={sectionTitleStyle}>
-            Centering Reports ({centeringReports.length})
-          </div>
-          <div
-            style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}
-          >
-            Same shape as AI grading — tap for the full measurement + grade
-            breakdown.
-          </div>
-          {centeringReports.length === 0 ? (
-            <EmptyRow label="No centering reports." />
-          ) : (
-            <RowList>
-              {centeringReports.map((r) => (
-                <ReportRow
-                  key={r.id}
-                  onClick={() =>
-                    router.push(`/admin/users/${userId}/centering/${r.id}`)
-                  }
-                  title={r.label || `${r.side ?? "front"} scan`}
-                  subtitle={r.card_id ?? undefined}
-                  right={
-                    r.truepoint_score != null
-                      ? `TP ${r.truepoint_score}`
-                      : (r.psa_grade ?? "—")
-                  }
-                  date={r.created_at}
-                />
-              ))}
-            </RowList>
-          )}
-        </div>
+            {/* Subscription + Plan/Resend actions */}
+            <div style={cardStyle}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={sectionTitleStyle}>Subscription</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <ActionButton onClick={openPlanModal}>Override plan</ActionButton>
+                  {!verified && (
+                    <ActionButton
+                      onClick={resendVerification}
+                      disabled={resendState === "sending"}
+                      color={resendState === "sent" ? "#10B981" : resendState === "error" ? "#EF4444" : undefined}
+                    >
+                      {resendState === "sending"
+                        ? "Sending…"
+                        : resendState === "sent"
+                          ? "Sent ✓"
+                          : resendState === "error"
+                            ? "Retry"
+                            : "Resend verification"}
+                    </ActionButton>
+                  )}
+                </div>
+              </div>
+              {sub ? (
+                <div style={{ marginTop: 14 }}>
+                  <Field
+                    label="Plan"
+                    value={
+                      <span style={{ color: planColor, textTransform: "uppercase", fontSize: 12, fontWeight: 700 }}>
+                        {sub.plan}
+                      </span>
+                    }
+                  />
+                  <Field label="Status" value={titleCase(sub.status)} />
+                  <Field label="Billing platform" value={titleCase(sub.platform)} />
+                  <Field label="Renews / ends" value={dateStr(sub.current_period_end)} />
+                  {sub.trial_ends_at && <Field label="Trial ends" value={dateStr(sub.trial_ends_at)} />}
+                  {sub.stripe_customer_id && <Field label="Stripe customer" value={sub.stripe_customer_id} />}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 14 }}>
+                  No subscription record (free tier).
+                </div>
+              )}
+            </div>
 
-        {/* Collection (read-only) */}
-        <div style={cardStyle}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div>
-              <div style={sectionTitleStyle}>Collection (read-only)</div>
-              <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                {detail
-                  ? `${detail.usage.collections} collection${detail.usage.collections === 1 ? "" : "s"} tracked.`
-                  : "Loading…"}
+            {/* Profile */}
+            <div style={cardStyle}>
+              <div style={sectionTitleStyle}>Profile</div>
+              <div style={{ marginTop: 14 }}>
+                <Field label="Username" value={p?.username} />
+                <Field label="Full name" value={p?.full_name} />
+                <Field label="Phone" value={p?.phone} />
+                <Field
+                  label="Email verified"
+                  value={
+                    verified ? (
+                      <span style={{ color: "#10B981" }}>✓ {dateStr(p?.email_verified_at)}</span>
+                    ) : (
+                      <span style={{ color: "#F59E0B" }}>Unverified</span>
+                    )
+                  }
+                />
+                <Field label="Favorite Pokémon" value={p?.favorite_pokemon} />
+                <Field label="Favorite set" value={p?.favorite_set} />
+                <Field label="Collecting years" value={p?.collecting_years} />
+                <Field label="Collection type" value={titleCase(p?.collection_type)} />
+                <Field label="Collector style" value={titleCase(p?.collector_style)} />
+                <Field label="Preferred grader" value={p?.preferred_grading_company} />
+                <Field label="Currency" value={p?.currency} />
+                <Field
+                  label="Affiliation"
+                  value={detail?.affiliate ? `${detail.affiliate.name} (${detail.affiliate.type})` : p?.affiliation}
+                />
+                <Field label="Joined" value={dateStr(p?.created_at)} />
+                <Field label="Last login" value={dateTimeStr(detail?.activity.lastLoginAt)} />
               </div>
             </div>
-            {!collectionOpen && (
-              <button
-                onClick={loadCollection}
+
+            {/* Recent devices */}
+            {detail && detail.activity.recentDevices.length > 0 && (
+              <div style={cardStyle}>
+                <div style={sectionTitleStyle}>Recent Devices</div>
+                <div style={{ marginTop: 14 }}>
+                  {detail.activity.recentDevices.map((d, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "9px 0",
+                        borderTop: i === 0 ? "none" : "1px solid var(--border)",
+                        fontSize: 12,
+                      }}
+                    >
+                      <span style={{ color: "var(--text-primary)" }}>
+                        {[d.device_name, d.os, d.browser].filter(Boolean).join(" · ") ||
+                          d.device_type ||
+                          "Unknown device"}
+                      </span>
+                      <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{dateStr(d.last_login_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Error history — lazy, per-user filtered view of the same
+                error_logs table the global Error Logs admin tab reads. */}
+            <div style={cardStyle}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={sectionTitleStyle}>Error History</div>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    {detail ? `${detail.usage.errorLogs} logged.` : "Loading…"}
+                  </div>
+                </div>
+                {!errorLogsOpen && <ActionButton onClick={loadErrorLogs}>Load errors</ActionButton>}
+              </div>
+              {errorLogsOpen && (
+                <div style={{ marginTop: 14 }}>
+                  {errorLogsLoading ? (
+                    <EmptyRow label="Loading…" />
+                  ) : errorLogs.length === 0 ? (
+                    <EmptyRow label="No error logs." />
+                  ) : (
+                    <RowList>
+                      {errorLogs.map((log) => (
+                        <div
+                          key={log.id}
+                          style={{
+                            padding: "10px 4px",
+                            borderTop: "1px solid var(--border)",
+                            fontSize: 12,
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                            <span
+                              style={{
+                                color:
+                                  log.severity === "error"
+                                    ? "#EF4444"
+                                    : log.severity === "warning"
+                                      ? "#F59E0B"
+                                      : "var(--text-secondary)",
+                                fontWeight: 600,
+                                textTransform: "uppercase",
+                                fontSize: 10,
+                              }}
+                            >
+                              {log.severity} · {log.source}
+                              {log.resolved ? " · resolved" : ""}
+                            </span>
+                            <span style={{ color: "var(--text-dim)", fontSize: 11, flexShrink: 0 }}>
+                              {dateTimeStr(log.created_at)}
+                            </span>
+                          </div>
+                          <div style={{ color: "var(--text-primary)", marginTop: 4 }}>{log.message}</div>
+                          {log.request_path && (
+                            <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 2 }}>
+                              {log.request_path}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </RowList>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {tab === "reports" && (
+          <>
+            {reportsError && (
+              <div style={{ color: "#EF4444", fontSize: 13 }}>{reportsError}</div>
+            )}
+            <div style={cardStyle}>
+              <div style={sectionTitleStyle}>AI Grading Reports ({aiReports.length})</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}>
+                Date, card, and predicted grades — tap any row for the full report as the user saw it.
+              </div>
+              {reportsLoading ? (
+                <EmptyRow label="Loading…" />
+              ) : aiReports.length === 0 ? (
+                <EmptyRow label="No AI grading reports." />
+              ) : (
+                <RowList>
+                  {aiReports.map((r) => (
+                    <ReportRow
+                      key={r.id}
+                      onClick={() => router.push(`/admin/users/${userId}/ai-grading/${r.id}`)}
+                      title={r.card_name || "Untitled card"}
+                      subtitle={r.set_name || undefined}
+                      right={r.status === "completed" ? `TP ${r.tp_score ?? r.overall_score ?? "—"}` : r.status}
+                      date={r.created_at}
+                    />
+                  ))}
+                </RowList>
+              )}
+            </div>
+
+            <div style={cardStyle}>
+              <div style={sectionTitleStyle}>Centering Reports ({centeringReports.length})</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}>
+                Same shape as AI grading — tap for the full measurement + grade breakdown.
+              </div>
+              {reportsLoading ? (
+                <EmptyRow label="Loading…" />
+              ) : centeringReports.length === 0 ? (
+                <EmptyRow label="No centering reports." />
+              ) : (
+                <RowList>
+                  {centeringReports.map((r) => (
+                    <ReportRow
+                      key={r.id}
+                      onClick={() => router.push(`/admin/users/${userId}/centering/${r.id}`)}
+                      title={r.label || `${r.side ?? "front"} scan`}
+                      subtitle={r.card_id ?? undefined}
+                      right={r.truepoint_score != null ? `TP ${r.truepoint_score}` : (r.psa_grade ?? "—")}
+                      date={r.created_at}
+                    />
+                  ))}
+                </RowList>
+              )}
+            </div>
+          </>
+        )}
+
+        {tab === "collection" && (
+          <div style={cardStyle}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={sectionTitleStyle}>Collection (read-only)</div>
+                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                  {detail ? `${detail.usage.collections} collection${detail.usage.collections === 1 ? "" : "s"} tracked.` : "Loading…"}
+                </div>
+              </div>
+              {!collectionLoaded && (
+                <ActionButton onClick={loadCollection} disabled={collectionLoading}>
+                  {collectionLoading ? "Loading…" : "Load inventory"}
+                </ActionButton>
+              )}
+            </div>
+            {collectionLoaded && (
+              <div style={{ marginTop: 14 }}>
+                {collection.length === 0 ? (
+                  <EmptyRow label="No inventory items." />
+                ) : (
+                  <RowList>
+                    {collection.slice(0, 200).map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "10px 4px",
+                          borderTop: "1px solid var(--border)",
+                          fontSize: 13,
+                        }}
+                      >
+                        <span style={{ color: "var(--text-primary)" }}>
+                          {item.card?.name || item.product?.name || item.id}
+                          {item.quantity > 1 ? ` ×${item.quantity}` : ""}
+                          {item.grading_company && item.grade
+                            ? ` · ${item.grading_company} ${item.grade}`
+                            : item.condition
+                              ? ` · ${item.condition}`
+                              : ""}
+                        </span>
+                        <span style={{ color: "var(--text-dim)", fontSize: 12 }}>
+                          {item.marketValue.marketPrice != null
+                            ? `$${item.marketValue.marketPrice.toLocaleString()}`
+                            : "—"}
+                        </span>
+                      </div>
+                    ))}
+                  </RowList>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Plan override modal */}
+      {planModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: 24, width: 360 }}>
+            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", marginBottom: 4 }}>
+              Override Plan
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 16 }}>{displayName}</div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 6 }}>NEW PLAN</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {(["collector", "pro"] as const).map((pl) => (
+                  <button
+                    key={pl}
+                    onClick={() => setNewPlan(pl)}
+                    style={{
+                      flex: 1,
+                      padding: "8px 0",
+                      borderRadius: 8,
+                      border: `1px solid ${newPlan === pl ? "var(--gold)" : "var(--border)"}`,
+                      background: newPlan === pl ? "rgba(201,168,76,0.1)" : "transparent",
+                      color: newPlan === pl ? "var(--gold)" : "var(--text-secondary)",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {pl}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 6 }}>DURATION</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {(
+                  [
+                    { label: "Indefinite", v: null },
+                    { label: "1 mo", v: 1 },
+                    { label: "3 mo", v: 3 },
+                    { label: "6 mo", v: 6 },
+                    { label: "12 mo", v: 12 },
+                  ] as { label: string; v: number | null }[]
+                ).map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setDurationMonths(opt.v)}
+                    style={{
+                      flex: "1 0 auto",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${durationMonths === opt.v ? "var(--gold)" : "var(--border)"}`,
+                      background: durationMonths === opt.v ? "rgba(201,168,76,0.1)" : "transparent",
+                      color: durationMonths === opt.v ? "var(--gold)" : "var(--text-secondary)",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 6 }}>
+                {durationMonths
+                  ? `Comp trial — expires in ${durationMonths} month${durationMonths > 1 ? "s" : ""} (status: trialing).`
+                  : "Indefinite comp grant (status: active)."}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 6 }}>NOTE (OPTIONAL)</div>
+              <input
+                value={planNote}
+                onChange={(e) => setPlanNote(e.target.value)}
+                placeholder="Reason for override…"
                 style={{
-                  padding: "7px 14px",
+                  width: "100%",
+                  background: "var(--surface-2, var(--surface))",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  color: "var(--text-primary)",
+                  fontFamily: "inherit",
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setPlanModal(false)}
+                disabled={savingPlan}
+                style={{
+                  flex: 1,
+                  padding: "8px 0",
                   borderRadius: 8,
                   border: "1px solid var(--border)",
                   background: "transparent",
@@ -367,55 +829,35 @@ export default function AdminUserDetailPage() {
                   fontFamily: "inherit",
                 }}
               >
-                Load inventory
+                Cancel
               </button>
-            )}
-          </div>
-          {collectionOpen && (
-            <div style={{ marginTop: 14 }}>
-              {collection.length === 0 ? (
-                <EmptyRow label="No inventory items." />
-              ) : (
-                <RowList>
-                  {collection.slice(0, 200).map((item) => (
-                    <div
-                      key={item.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "10px 4px",
-                        borderTop: "1px solid var(--border)",
-                        fontSize: 13,
-                      }}
-                    >
-                      <span style={{ color: "var(--text-primary)" }}>
-                        {item.card?.name || item.product?.name || item.id}
-                        {item.quantity > 1 ? ` ×${item.quantity}` : ""}
-                        {item.grading_company && item.grade
-                          ? ` · ${item.grading_company} ${item.grade}`
-                          : item.condition
-                            ? ` · ${item.condition}`
-                            : ""}
-                      </span>
-                      <span style={{ color: "var(--text-dim)", fontSize: 12 }}>
-                        {item.marketValue.marketPrice != null
-                          ? `$${item.marketValue.marketPrice.toLocaleString()}`
-                          : "—"}
-                      </span>
-                    </div>
-                  ))}
-                </RowList>
-              )}
+              <button
+                onClick={overridePlan}
+                disabled={savingPlan}
+                style={{
+                  flex: 1,
+                  padding: "8px 0",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "var(--gold)",
+                  color: "#0D0E11",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {savingPlan ? "Saving…" : "Confirm"}
+              </button>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
-// ─── Shared row helpers ─────────────────────────────────────────────────────────
+// ─── Shared bits ─────────────────────────────────────────────────────────────
 
 function RowList({ children }: { children: React.ReactNode }) {
   return <div style={{ display: "flex", flexDirection: "column" }}>{children}</div>;
@@ -423,6 +865,81 @@ function RowList({ children }: { children: React.ReactNode }) {
 
 function EmptyRow({ label }: { label: string }) {
   return <div style={{ fontSize: 13, color: "var(--text-dim)" }}>{label}</div>;
+}
+
+function ActionButton({
+  onClick,
+  disabled,
+  color,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  color?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: "7px 14px",
+        borderRadius: 8,
+        border: "1px solid var(--border)",
+        background: "transparent",
+        color: color ?? "var(--text-secondary)",
+        fontSize: 12,
+        cursor: disabled ? "default" : "pointer",
+        fontFamily: "inherit",
+        opacity: disabled ? 0.6 : 1,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StatTile({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
+  return (
+    <div
+      style={{
+        flexBasis: "31%",
+        flexGrow: 1,
+        background: "var(--surface-2, var(--surface))",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: "10px 12px",
+      }}
+    >
+      <div style={{ fontSize: 9, letterSpacing: 0.5, color: "var(--text-dim)", marginBottom: 4, textTransform: "uppercase" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: accent ?? "var(--text-primary)" }}>{value}</div>
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "7px 0",
+        borderBottom: "1px solid var(--border)",
+        fontSize: 12,
+      }}
+    >
+      <span style={{ color: "var(--text-dim)" }}>{label}</span>
+      {typeof value === "string" || value == null ? (
+        <span style={{ color: "var(--text-primary)", textAlign: "right" }}>{value ?? "—"}</span>
+      ) : (
+        value
+      )}
+    </div>
+  );
 }
 
 function ReportRow({
@@ -460,15 +977,7 @@ function ReportRow({
       }}
     >
       <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--text-primary)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
+        <div style={{ fontSize: 13, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {title}
         </div>
         <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
@@ -477,16 +986,7 @@ function ReportRow({
         </div>
       </div>
       {right && (
-        <span
-          style={{
-            fontSize: 12,
-            fontFamily: "DM Mono, monospace",
-            color: "var(--gold)",
-            flexShrink: 0,
-          }}
-        >
-          {right}
-        </span>
+        <span style={{ fontSize: 12, fontFamily: "DM Mono, monospace", color: "var(--gold)", flexShrink: 0 }}>{right}</span>
       )}
     </button>
   );
