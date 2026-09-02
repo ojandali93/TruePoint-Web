@@ -3,15 +3,21 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import api from "../../../../../lib/api";
 
-// ─── User portal consolidation (2026-09-02) ─────────────────────────────────
+// ─── User portal consolidation (2026-09-02, adjusted 2026-09-02) ───────────
 // One user portal, not two. This page absorbed everything that used to live
 // only in the separate "Users" tab on /admin (PlatformUsers, now deleted):
 // plan override (WITH the duration control — mobile's own version silently
 // omitted it and always granted indefinitely, which was the wrong behavior
-// to keep; this is the one true version now) and resend-verification. Tabs:
-// Account (profile, subscription + plan/resend actions, usage, devices,
-// error history) / Reports (AI grading + centering, unchanged from before)
-// / Collection (read-only inventory, unchanged from before).
+// to keep; this is the one true version now) and resend-verification.
+//
+// Single page, no tabs. Profile/usage/subscription (the fast "analytical
+// information" — one query) load immediately on open, same as before.
+// Inventory, AI grading reports, and centering reports are each behind
+// their own "View …" button and fetch ONLY on click — the previous version
+// fetched AI grading + centering reports eagerly on mount alongside the
+// slow /detail call, and the combined load was timing out on real accounts.
+// Nothing here fetches until asked for it, and each of the three stays
+// independent so one slow list never blocks another.
 
 // ─── Types (server shapes — see adminPlatform.service.ts) ──────────────────────
 
@@ -129,8 +135,6 @@ interface ErrorLogRow {
   resolved: boolean;
 }
 
-type Tab = "account" | "reports" | "collection";
-
 const cardStyle: React.CSSProperties = {
   background: "var(--surface)",
   border: "1px solid var(--border)",
@@ -159,16 +163,19 @@ export default function AdminUserDetailPage() {
   const params = useParams<{ userId: string }>();
   const userId = params.userId;
 
-  const [tab, setTab] = useState<Tab>("account");
-
   const [detail, setDetail] = useState<UserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
 
+  // Each of the three below is independent: its own loaded/loading flag,
+  // fetched only when its "View …" button is clicked, never on mount.
   const [aiReports, setAiReports] = useState<AIGradingReportRow[]>([]);
+  const [aiReportsLoaded, setAiReportsLoaded] = useState(false);
+  const [aiReportsLoading, setAiReportsLoading] = useState(false);
+
   const [centeringReports, setCenteringReports] = useState<CenteringReportRow[]>([]);
-  const [reportsLoading, setReportsLoading] = useState(true);
-  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [centeringLoaded, setCenteringLoaded] = useState(false);
+  const [centeringLoading, setCenteringLoading] = useState(false);
 
   const [collection, setCollection] = useState<CollectionItem[]>([]);
   const [collectionLoaded, setCollectionLoaded] = useState(false);
@@ -190,7 +197,7 @@ export default function AdminUserDetailPage() {
 
   // /detail is independently slow for a large account (live inventory
   // valuation across every item) — its own effect, own loading flag, own
-  // raised timeout, so it never blocks the (fast) report lists.
+  // raised timeout. This is the only thing that fetches on mount.
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
@@ -211,30 +218,33 @@ export default function AdminUserDetailPage() {
     };
   }, [userId]);
 
-  useEffect(() => {
-    if (!userId) return;
-    let mounted = true;
-    (async () => {
-      setReportsLoading(true);
-      setReportsError(null);
-      try {
-        const [aiRes, centeringRes] = await Promise.all([
-          api.get<{ data: AIGradingReportRow[] }>(`/admin/users/${userId}/ai-grading-reports`),
-          api.get<{ data: CenteringReportRow[] }>(`/admin/users/${userId}/centering-reports`),
-        ]);
-        if (!mounted) return;
-        setAiReports(aiRes.data.data ?? []);
-        setCenteringReports(centeringRes.data.data ?? []);
-      } catch (e) {
-        if (mounted) setReportsError(e instanceof Error ? e.message : "Failed to load reports.");
-      } finally {
-        if (mounted) setReportsLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [userId]);
+  const loadAiReports = async () => {
+    if (aiReportsLoaded) return;
+    setAiReportsLoading(true);
+    try {
+      const r = await api.get<{ data: AIGradingReportRow[] }>(`/admin/users/${userId}/ai-grading-reports`);
+      setAiReports(r.data.data ?? []);
+      setAiReportsLoaded(true);
+    } catch {
+      // leave empty — the panel shows "no reports" either way
+    } finally {
+      setAiReportsLoading(false);
+    }
+  };
+
+  const loadCenteringReports = async () => {
+    if (centeringLoaded) return;
+    setCenteringLoading(true);
+    try {
+      const r = await api.get<{ data: CenteringReportRow[] }>(`/admin/users/${userId}/centering-reports`);
+      setCenteringReports(r.data.data ?? []);
+      setCenteringLoaded(true);
+    } catch {
+      // leave empty — the panel shows "no reports" either way
+    } finally {
+      setCenteringLoading(false);
+    }
+  };
 
   const loadCollection = async () => {
     if (collectionLoaded) return;
@@ -351,264 +361,226 @@ export default function AdminUserDetailPage() {
             "Loading profile…"
           )}
         </div>
-
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 4, marginTop: 20 }}>
-          {(
-            [
-              { key: "account" as const, label: "Account" },
-              { key: "reports" as const, label: "Reports" },
-              { key: "collection" as const, label: "Collection" },
-            ]
-          ).map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: "8px 8px 0 0",
-                border: "none",
-                borderBottom: `2px solid ${tab === t.key ? "var(--gold)" : "transparent"}`,
-                background: "transparent",
-                color: tab === t.key ? "var(--gold)" : "var(--text-dim)",
-                fontSize: 13,
-                fontWeight: tab === t.key ? 500 : 400,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {/* Body */}
+      {/* Body — one page, no tabs */}
       <div style={{ padding: "28px 40px", maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
-        {tab === "account" && (
-          <>
-            {/* Usage tiles */}
-            <div style={cardStyle}>
-              <div style={sectionTitleStyle}>Activity &amp; Feature Usage</div>
-              {detail ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
-                  <StatTile label="Collections" value={detail.usage.collections} />
-                  <StatTile label="Master sets tracked" value={detail.usage.masterSetsTracked} />
-                  <StatTile label="Grading submissions" value={detail.usage.gradingSubmissions} />
-                  <StatTile label="Centering reports" value={detail.usage.centeringReports} />
-                  <StatTile label="AI grading reports" value={detail.usage.aiGradingReports} />
-                  <StatTile label="eBay analyses" value={detail.usage.ebayReports} />
-                  <StatTile label="Feedback sent" value={detail.usage.feedbackSubmitted} />
-                  <StatTile
-                    label="Error logs"
-                    value={detail.usage.errorLogs}
-                    accent={detail.usage.errorLogs > 0 ? "#F59E0B" : undefined}
-                  />
-                  <StatTile label="Devices" value={detail.activity.deviceCount} />
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>Loading…</div>
-              )}
-              {detail?.inventory && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                  <StatTile label="Total cards" value={detail.inventory.totalCards.toLocaleString()} />
-                  <StatTile label="Market value" value={money(detail.inventory.marketValue)} accent="var(--gold)" />
-                  <StatTile
-                    label="Gain / loss"
-                    value={money(detail.inventory.gainLoss)}
-                    accent={detail.inventory.gainLoss >= 0 ? "#10B981" : "#EF4444"}
-                  />
-                </div>
+        {/* Usage tiles */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle}>Activity &amp; Feature Usage</div>
+          {detail ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+              <StatTile label="Collections" value={detail.usage.collections} />
+              <StatTile label="Master sets tracked" value={detail.usage.masterSetsTracked} />
+              <StatTile label="Grading submissions" value={detail.usage.gradingSubmissions} />
+              <StatTile label="Centering reports" value={detail.usage.centeringReports} />
+              <StatTile label="AI grading reports" value={detail.usage.aiGradingReports} />
+              <StatTile label="eBay analyses" value={detail.usage.ebayReports} />
+              <StatTile label="Feedback sent" value={detail.usage.feedbackSubmitted} />
+              <StatTile
+                label="Error logs"
+                value={detail.usage.errorLogs}
+                accent={detail.usage.errorLogs > 0 ? "#F59E0B" : undefined}
+              />
+              <StatTile label="Devices" value={detail.activity.deviceCount} />
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>Loading…</div>
+          )}
+          {detail?.inventory && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+              <StatTile label="Total cards" value={detail.inventory.totalCards.toLocaleString()} />
+              <StatTile label="Market value" value={money(detail.inventory.marketValue)} accent="var(--gold)" />
+              <StatTile
+                label="Gain / loss"
+                value={money(detail.inventory.gainLoss)}
+                accent={detail.inventory.gainLoss >= 0 ? "#10B981" : "#EF4444"}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Subscription + Plan/Resend actions */}
+        <div style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={sectionTitleStyle}>Subscription</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <ActionButton onClick={openPlanModal}>Override plan</ActionButton>
+              {!verified && (
+                <ActionButton
+                  onClick={resendVerification}
+                  disabled={resendState === "sending"}
+                  color={resendState === "sent" ? "#10B981" : resendState === "error" ? "#EF4444" : undefined}
+                >
+                  {resendState === "sending"
+                    ? "Sending…"
+                    : resendState === "sent"
+                      ? "Sent ✓"
+                      : resendState === "error"
+                        ? "Retry"
+                        : "Resend verification"}
+                </ActionButton>
               )}
             </div>
+          </div>
+          {sub ? (
+            <div style={{ marginTop: 14 }}>
+              <Field
+                label="Plan"
+                value={
+                  <span style={{ color: planColor, textTransform: "uppercase", fontSize: 12, fontWeight: 700 }}>
+                    {sub.plan}
+                  </span>
+                }
+              />
+              <Field label="Status" value={titleCase(sub.status)} />
+              <Field label="Billing platform" value={titleCase(sub.platform)} />
+              <Field label="Renews / ends" value={dateStr(sub.current_period_end)} />
+              {sub.trial_ends_at && <Field label="Trial ends" value={dateStr(sub.trial_ends_at)} />}
+              {sub.stripe_customer_id && <Field label="Stripe customer" value={sub.stripe_customer_id} />}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 14 }}>
+              No subscription record (free tier).
+            </div>
+          )}
+        </div>
 
-            {/* Subscription + Plan/Resend actions */}
-            <div style={cardStyle}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={sectionTitleStyle}>Subscription</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <ActionButton onClick={openPlanModal}>Override plan</ActionButton>
-                  {!verified && (
-                    <ActionButton
-                      onClick={resendVerification}
-                      disabled={resendState === "sending"}
-                      color={resendState === "sent" ? "#10B981" : resendState === "error" ? "#EF4444" : undefined}
-                    >
-                      {resendState === "sending"
-                        ? "Sending…"
-                        : resendState === "sent"
-                          ? "Sent ✓"
-                          : resendState === "error"
-                            ? "Retry"
-                            : "Resend verification"}
-                    </ActionButton>
-                  )}
+        {/* Profile */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle}>Profile</div>
+          <div style={{ marginTop: 14 }}>
+            <Field label="Username" value={p?.username} />
+            <Field label="Full name" value={p?.full_name} />
+            <Field label="Phone" value={p?.phone} />
+            <Field
+              label="Email verified"
+              value={
+                verified ? (
+                  <span style={{ color: "#10B981" }}>✓ {dateStr(p?.email_verified_at)}</span>
+                ) : (
+                  <span style={{ color: "#F59E0B" }}>Unverified</span>
+                )
+              }
+            />
+            <Field label="Favorite Pokémon" value={p?.favorite_pokemon} />
+            <Field label="Favorite set" value={p?.favorite_set} />
+            <Field label="Collecting years" value={p?.collecting_years} />
+            <Field label="Collection type" value={titleCase(p?.collection_type)} />
+            <Field label="Collector style" value={titleCase(p?.collector_style)} />
+            <Field label="Preferred grader" value={p?.preferred_grading_company} />
+            <Field label="Currency" value={p?.currency} />
+            <Field
+              label="Affiliation"
+              value={detail?.affiliate ? `${detail.affiliate.name} (${detail.affiliate.type})` : p?.affiliation}
+            />
+            <Field label="Joined" value={dateStr(p?.created_at)} />
+            <Field label="Last login" value={dateTimeStr(detail?.activity.lastLoginAt)} />
+          </div>
+        </div>
+
+        {/* Recent devices */}
+        {detail && detail.activity.recentDevices.length > 0 && (
+          <div style={cardStyle}>
+            <div style={sectionTitleStyle}>Recent Devices</div>
+            <div style={{ marginTop: 14 }}>
+              {detail.activity.recentDevices.map((d, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "9px 0",
+                    borderTop: i === 0 ? "none" : "1px solid var(--border)",
+                    fontSize: 12,
+                  }}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>
+                    {[d.device_name, d.os, d.browser].filter(Boolean).join(" · ") ||
+                      d.device_type ||
+                      "Unknown device"}
+                  </span>
+                  <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{dateStr(d.last_login_at)}</span>
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Inventory — read-only, fetched only on click */}
+        <div style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={sectionTitleStyle}>Inventory (read-only)</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                {detail ? `${detail.usage.collections} collection${detail.usage.collections === 1 ? "" : "s"} tracked.` : "Loading…"}
               </div>
-              {sub ? (
-                <div style={{ marginTop: 14 }}>
-                  <Field
-                    label="Plan"
-                    value={
-                      <span style={{ color: planColor, textTransform: "uppercase", fontSize: 12, fontWeight: 700 }}>
-                        {sub.plan}
-                      </span>
-                    }
-                  />
-                  <Field label="Status" value={titleCase(sub.status)} />
-                  <Field label="Billing platform" value={titleCase(sub.platform)} />
-                  <Field label="Renews / ends" value={dateStr(sub.current_period_end)} />
-                  {sub.trial_ends_at && <Field label="Trial ends" value={dateStr(sub.trial_ends_at)} />}
-                  {sub.stripe_customer_id && <Field label="Stripe customer" value={sub.stripe_customer_id} />}
-                </div>
+            </div>
+            {!collectionLoaded && (
+              <ActionButton onClick={loadCollection} disabled={collectionLoading}>
+                {collectionLoading ? "Loading…" : "View inventory"}
+              </ActionButton>
+            )}
+          </div>
+          {collectionLoaded && (
+            <div style={{ marginTop: 14 }}>
+              {collection.length === 0 ? (
+                <EmptyRow label="No inventory items." />
               ) : (
-                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 14 }}>
-                  No subscription record (free tier).
-                </div>
-              )}
-            </div>
-
-            {/* Profile */}
-            <div style={cardStyle}>
-              <div style={sectionTitleStyle}>Profile</div>
-              <div style={{ marginTop: 14 }}>
-                <Field label="Username" value={p?.username} />
-                <Field label="Full name" value={p?.full_name} />
-                <Field label="Phone" value={p?.phone} />
-                <Field
-                  label="Email verified"
-                  value={
-                    verified ? (
-                      <span style={{ color: "#10B981" }}>✓ {dateStr(p?.email_verified_at)}</span>
-                    ) : (
-                      <span style={{ color: "#F59E0B" }}>Unverified</span>
-                    )
-                  }
-                />
-                <Field label="Favorite Pokémon" value={p?.favorite_pokemon} />
-                <Field label="Favorite set" value={p?.favorite_set} />
-                <Field label="Collecting years" value={p?.collecting_years} />
-                <Field label="Collection type" value={titleCase(p?.collection_type)} />
-                <Field label="Collector style" value={titleCase(p?.collector_style)} />
-                <Field label="Preferred grader" value={p?.preferred_grading_company} />
-                <Field label="Currency" value={p?.currency} />
-                <Field
-                  label="Affiliation"
-                  value={detail?.affiliate ? `${detail.affiliate.name} (${detail.affiliate.type})` : p?.affiliation}
-                />
-                <Field label="Joined" value={dateStr(p?.created_at)} />
-                <Field label="Last login" value={dateTimeStr(detail?.activity.lastLoginAt)} />
-              </div>
-            </div>
-
-            {/* Recent devices */}
-            {detail && detail.activity.recentDevices.length > 0 && (
-              <div style={cardStyle}>
-                <div style={sectionTitleStyle}>Recent Devices</div>
-                <div style={{ marginTop: 14 }}>
-                  {detail.activity.recentDevices.map((d, i) => (
+                <RowList>
+                  {collection.slice(0, 200).map((item) => (
                     <div
-                      key={i}
+                      key={item.id}
                       style={{
                         display: "flex",
-                        justifyContent: "space-between",
                         alignItems: "center",
-                        padding: "9px 0",
-                        borderTop: i === 0 ? "none" : "1px solid var(--border)",
-                        fontSize: 12,
+                        justifyContent: "space-between",
+                        padding: "10px 4px",
+                        borderTop: "1px solid var(--border)",
+                        fontSize: 13,
                       }}
                     >
                       <span style={{ color: "var(--text-primary)" }}>
-                        {[d.device_name, d.os, d.browser].filter(Boolean).join(" · ") ||
-                          d.device_type ||
-                          "Unknown device"}
+                        {item.card?.name || item.product?.name || item.id}
+                        {item.quantity > 1 ? ` ×${item.quantity}` : ""}
+                        {item.grading_company && item.grade
+                          ? ` · ${item.grading_company} ${item.grade}`
+                          : item.condition
+                            ? ` · ${item.condition}`
+                            : ""}
                       </span>
-                      <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{dateStr(d.last_login_at)}</span>
+                      <span style={{ color: "var(--text-dim)", fontSize: 12 }}>
+                        {item.marketValue.marketPrice != null
+                          ? `$${item.marketValue.marketPrice.toLocaleString()}`
+                          : "—"}
+                      </span>
                     </div>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {/* Error history — lazy, per-user filtered view of the same
-                error_logs table the global Error Logs admin tab reads. */}
-            <div style={cardStyle}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <div style={sectionTitleStyle}>Error History</div>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    {detail ? `${detail.usage.errorLogs} logged.` : "Loading…"}
-                  </div>
-                </div>
-                {!errorLogsOpen && <ActionButton onClick={loadErrorLogs}>Load errors</ActionButton>}
-              </div>
-              {errorLogsOpen && (
-                <div style={{ marginTop: 14 }}>
-                  {errorLogsLoading ? (
-                    <EmptyRow label="Loading…" />
-                  ) : errorLogs.length === 0 ? (
-                    <EmptyRow label="No error logs." />
-                  ) : (
-                    <RowList>
-                      {errorLogs.map((log) => (
-                        <div
-                          key={log.id}
-                          style={{
-                            padding: "10px 4px",
-                            borderTop: "1px solid var(--border)",
-                            fontSize: 12,
-                          }}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                            <span
-                              style={{
-                                color:
-                                  log.severity === "error"
-                                    ? "#EF4444"
-                                    : log.severity === "warning"
-                                      ? "#F59E0B"
-                                      : "var(--text-secondary)",
-                                fontWeight: 600,
-                                textTransform: "uppercase",
-                                fontSize: 10,
-                              }}
-                            >
-                              {log.severity} · {log.source}
-                              {log.resolved ? " · resolved" : ""}
-                            </span>
-                            <span style={{ color: "var(--text-dim)", fontSize: 11, flexShrink: 0 }}>
-                              {dateTimeStr(log.created_at)}
-                            </span>
-                          </div>
-                          <div style={{ color: "var(--text-primary)", marginTop: 4 }}>{log.message}</div>
-                          {log.request_path && (
-                            <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 2 }}>
-                              {log.request_path}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </RowList>
-                  )}
-                </div>
+                </RowList>
               )}
             </div>
-          </>
-        )}
+          )}
+        </div>
 
-        {tab === "reports" && (
-          <>
-            {reportsError && (
-              <div style={{ color: "#EF4444", fontSize: 13 }}>{reportsError}</div>
-            )}
-            <div style={cardStyle}>
-              <div style={sectionTitleStyle}>AI Grading Reports ({aiReports.length})</div>
-              <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}>
-                Date, card, and predicted grades — tap any row for the full report as the user saw it.
+        {/* AI Grading Reports — fetched only on click */}
+        <div style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={sectionTitleStyle}>AI Grading Reports</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                {detail ? `${detail.usage.aiGradingReports} submitted.` : "Loading…"}
               </div>
-              {reportsLoading ? (
-                <EmptyRow label="Loading…" />
-              ) : aiReports.length === 0 ? (
+            </div>
+            {!aiReportsLoaded && (
+              <ActionButton onClick={loadAiReports} disabled={aiReportsLoading}>
+                {aiReportsLoading ? "Loading…" : "View AI grading reports"}
+              </ActionButton>
+            )}
+          </div>
+          {aiReportsLoaded && (
+            <div style={{ marginTop: 14 }}>
+              {aiReports.length === 0 ? (
                 <EmptyRow label="No AI grading reports." />
               ) : (
                 <RowList>
@@ -625,15 +597,27 @@ export default function AdminUserDetailPage() {
                 </RowList>
               )}
             </div>
+          )}
+        </div>
 
-            <div style={cardStyle}>
-              <div style={sectionTitleStyle}>Centering Reports ({centeringReports.length})</div>
-              <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}>
-                Same shape as AI grading — tap for the full measurement + grade breakdown.
+        {/* Centering Reports — fetched only on click */}
+        <div style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={sectionTitleStyle}>Centering Reports</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                {detail ? `${detail.usage.centeringReports} submitted.` : "Loading…"}
               </div>
-              {reportsLoading ? (
-                <EmptyRow label="Loading…" />
-              ) : centeringReports.length === 0 ? (
+            </div>
+            {!centeringLoaded && (
+              <ActionButton onClick={loadCenteringReports} disabled={centeringLoading}>
+                {centeringLoading ? "Loading…" : "View centering reports"}
+              </ActionButton>
+            )}
+          </div>
+          {centeringLoaded && (
+            <div style={{ marginTop: 14 }}>
+              {centeringReports.length === 0 ? (
                 <EmptyRow label="No centering reports." />
               ) : (
                 <RowList>
@@ -650,64 +634,72 @@ export default function AdminUserDetailPage() {
                 </RowList>
               )}
             </div>
-          </>
-        )}
+          )}
+        </div>
 
-        {tab === "collection" && (
-          <div style={cardStyle}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <div style={sectionTitleStyle}>Collection (read-only)</div>
-                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                  {detail ? `${detail.usage.collections} collection${detail.usage.collections === 1 ? "" : "s"} tracked.` : "Loading…"}
-                </div>
+        {/* Error history — lazy, per-user filtered view of the same
+            error_logs table the global Error Logs admin tab reads. */}
+        <div style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={sectionTitleStyle}>Error History</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                {detail ? `${detail.usage.errorLogs} logged.` : "Loading…"}
               </div>
-              {!collectionLoaded && (
-                <ActionButton onClick={loadCollection} disabled={collectionLoading}>
-                  {collectionLoading ? "Loading…" : "Load inventory"}
-                </ActionButton>
-              )}
             </div>
-            {collectionLoaded && (
-              <div style={{ marginTop: 14 }}>
-                {collection.length === 0 ? (
-                  <EmptyRow label="No inventory items." />
-                ) : (
-                  <RowList>
-                    {collection.slice(0, 200).map((item) => (
-                      <div
-                        key={item.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          padding: "10px 4px",
-                          borderTop: "1px solid var(--border)",
-                          fontSize: 13,
-                        }}
-                      >
-                        <span style={{ color: "var(--text-primary)" }}>
-                          {item.card?.name || item.product?.name || item.id}
-                          {item.quantity > 1 ? ` ×${item.quantity}` : ""}
-                          {item.grading_company && item.grade
-                            ? ` · ${item.grading_company} ${item.grade}`
-                            : item.condition
-                              ? ` · ${item.condition}`
-                              : ""}
+            {!errorLogsOpen && <ActionButton onClick={loadErrorLogs}>Load errors</ActionButton>}
+          </div>
+          {errorLogsOpen && (
+            <div style={{ marginTop: 14 }}>
+              {errorLogsLoading ? (
+                <EmptyRow label="Loading…" />
+              ) : errorLogs.length === 0 ? (
+                <EmptyRow label="No error logs." />
+              ) : (
+                <RowList>
+                  {errorLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      style={{
+                        padding: "10px 4px",
+                        borderTop: "1px solid var(--border)",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                        <span
+                          style={{
+                            color:
+                              log.severity === "error"
+                                ? "#EF4444"
+                                : log.severity === "warning"
+                                  ? "#F59E0B"
+                                  : "var(--text-secondary)",
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            fontSize: 10,
+                          }}
+                        >
+                          {log.severity} · {log.source}
+                          {log.resolved ? " · resolved" : ""}
                         </span>
-                        <span style={{ color: "var(--text-dim)", fontSize: 12 }}>
-                          {item.marketValue.marketPrice != null
-                            ? `$${item.marketValue.marketPrice.toLocaleString()}`
-                            : "—"}
+                        <span style={{ color: "var(--text-dim)", fontSize: 11, flexShrink: 0 }}>
+                          {dateTimeStr(log.created_at)}
                         </span>
                       </div>
-                    ))}
-                  </RowList>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                      <div style={{ color: "var(--text-primary)", marginTop: 4 }}>{log.message}</div>
+                      {log.request_path && (
+                        <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 2 }}>
+                          {log.request_path}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </RowList>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Plan override modal */}

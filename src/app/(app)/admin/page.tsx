@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import api from "../../../lib/api";
 import SyncPanel from "@/components/admin/SyncPanel";
+import UsersListPanel from "@/components/admin/UsersListPanel";
 import {
   ResponsiveContainer,
   BarChart,
@@ -134,6 +135,7 @@ interface AppSetting {
 type Tab =
   | "users"
   | "collection"
+  | "platform_users"
   | "errors"
   | "activity"
   | "flags"
@@ -3390,6 +3392,7 @@ export default function AdminPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: "users", label: "User Analytics" },
     { key: "collection", label: "Collection" },
+    { key: "platform_users", label: "Users" },
     { key: "errors", label: "Error Logs" },
     { key: "activity", label: "Activity" },
     { key: "flags", label: "Feature Flags" },
@@ -3546,6 +3549,7 @@ export default function AdminPage() {
       <div style={{ padding: "28px 40px", maxWidth: 1200, margin: "0 auto" }}>
         {activeTab === "users" && <UserAnalytics />}
         {activeTab === "collection" && <CollectionAnalytics />}
+        {activeTab === "platform_users" && <UsersListPanel />}
         {activeTab === "errors" && <ErrorLogs />}
         {activeTab === "activity" && <ActivityLogs />}
         {activeTab === "flags" && <FeatureFlags />}
