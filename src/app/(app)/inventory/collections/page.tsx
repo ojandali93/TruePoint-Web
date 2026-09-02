@@ -72,6 +72,7 @@ function CollectionCard({
           }}
         >
           <span
+            data-ph-mask
             style={{
               fontSize: 15,
               fontWeight: 500,
@@ -97,6 +98,7 @@ function CollectionCard({
         </div>
         {collection.description && (
           <div
+            data-ph-mask
             style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 4 }}
           >
             {collection.description}

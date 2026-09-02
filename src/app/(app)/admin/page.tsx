@@ -1710,6 +1710,7 @@ function ActivityLogs() {
                 {log.action}
               </span>
               <span
+                data-ph-mask
                 style={{
                   color: "var(--text-secondary)",
                   overflow: "hidden",
@@ -3434,6 +3435,7 @@ function Feedback() {
                 </div>
 
                 <div
+                  data-ph-mask
                   style={{
                     fontSize: 13,
                     color: "var(--text-primary)",
@@ -3453,14 +3455,14 @@ function Feedback() {
                     color: "var(--text-dim)",
                   }}
                 >
-                  <span>
+                  <span data-ph-mask>
                     {f.user?.full_name ??
                       f.user?.username ??
                       f.user_id ??
                       "unknown"}
                   </span>
                   {f.contact_email && (
-                    <span style={{ color: "var(--text-secondary)" }}>
+                    <span data-ph-mask style={{ color: "var(--text-secondary)" }}>
                       · {f.contact_email}
                     </span>
                   )}
@@ -3879,6 +3881,7 @@ function Satisfaction() {
                 </div>
                 {f.free_text && (
                   <div
+                    data-ph-mask
                     style={{
                       fontSize: 12,
                       color: "var(--text-secondary)",
@@ -3896,7 +3899,7 @@ function Satisfaction() {
                     gap: 8,
                   }}
                 >
-                  <span>{f.user?.full_name ?? f.user?.username ?? f.user_id}</span>
+                  <span data-ph-mask>{f.user?.full_name ?? f.user?.username ?? f.user_id}</span>
                   <span>·</span>
                   <span>{f.trigger_context}</span>
                   {f.platform && (
