@@ -10,6 +10,7 @@ import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { ROUTES } from "../../../constants/routes";
 import api from "../../../lib/api";
+import { getAnalyticsAnonymousId, identifySignup } from "../../../lib/analytics";
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -247,6 +248,21 @@ function RegisterForm() {
           console.error("Failed to save profile metadata:", err);
         }
       }
+
+      // Real "signup completed" moment for web. Profile creation itself
+      // happened via the handle_new_user DB trigger inside signUp() above
+      // (no explicit POST /users/me call site here to piggyback the
+      // anonymous id onto — see updateProfileSchema's comment) — so the
+      // anonymous id is backfilled with its own PUT /me right after, and
+      // identify/alias fires once that's underway. Neither call blocks
+      // navigation: this is instrumentation, not a gate on the signup flow.
+      const anonymousId = getAnalyticsAnonymousId();
+      if (anonymousId) {
+        api.put("/users/me", { posthog_anonymous_id: anonymousId }).catch((err) => {
+          console.warn("[analytics] failed to backfill posthog_anonymous_id:", err);
+        });
+      }
+      identifySignup(authData.user.id, { method: "email" });
 
       // Always go to onboarding. Email verification happens at the END of
       // onboarding (after Stripe), not before signup.
