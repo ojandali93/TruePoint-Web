@@ -105,16 +105,41 @@ export function getAnalyticsAnonymousId(): string | null {
   return anonymousId;
 }
 
-/** Same identify-then-alias ordering and reasoning as mobile's
- *  identifySignup — see that file's doc comment. */
+/**
+ * FIXED and LIVE-VERIFIED 2026-09-02, across 3 real throwaway signups
+ * during Part A's own gate proof:
+ *
+ * Attempt 1 (original): identify(userId) THEN alias(anonymousId) — wrong
+ * per alias()'s own doc, whose signature is `alias(alias, original?)`
+ * (`alias` = the id to use GOING FORWARD, `original` = the current one)
+ * — passing anonymousId as the first arg told PostHog to start aliasing
+ * *to* the anonymous id, backwards from the intent. Confirmed live:
+ * produced two separate person profiles (pre-signup history stranded on
+ * the anonymous person, signup_completed on a disconnected second one).
+ *
+ * Attempt 2: identify(userId) alone, no alias() — also confirmed live
+ * NOT to merge (identical two-person split on a second throwaway
+ * signup).
+ *
+ * Attempt 3 (this code, confirmed working on a third throwaway signup):
+ * alias(userId) BEFORE identify(), matching the doc's own single-arg
+ * example exactly (`posthog.alias('user_12345')`, called at signup,
+ * `original` left to default to whatever the current — anonymous —
+ * distinct_id already is). identify() still follows, to attach userId
+ * as the now-current id and set properties. PostHog's person view
+ * confirmed one merged person, both distinct_ids listed under one
+ * profile, full timeline from the pre-signup "Get started" click
+ * through signup_started, the Alias event, and signup_completed all on
+ * the same person.
+ */
 export function identifySignup(
   userId: string,
   properties?: Record<string, unknown>,
 ): void {
   if (!initialized) return;
   try {
+    posthog.alias(userId);
     posthog.identify(userId, properties);
-    if (anonymousId) posthog.alias(anonymousId);
   } catch (err) {
     console.warn("[analytics] identifySignup failed:", err);
   }
