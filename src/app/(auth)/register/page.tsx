@@ -10,6 +10,7 @@ import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { ROUTES } from "../../../constants/routes";
 import api from "../../../lib/api";
+import { getRefCookie } from "../../../lib/referral";
 import {
   captureAnalyticsEvent,
   getAnalyticsAnonymousId,
@@ -276,6 +277,26 @@ function RegisterForm() {
         screen: "register",
         method: "email",
       });
+
+      // AUDITS/affiliate-system-plan.md §2.3 / AUDITS/referral-program-
+      // plan.md §2.2 — the shared resolver, called right after signup.
+      // Manually-typed code wins over the ambient ?ref= cookie (doc §2.1:
+      // "explicit user action over an ambient cookie"). Fire-and-forget,
+      // exactly like the posthog_anonymous_id backfill above — never
+      // blocks navigation, never surfaces an error to the user. The
+      // server decides whether either flag is on for this user; a
+      // flag-off signup sends this same request and the server writes
+      // nothing in response — CRITICAL per instruction, this is not a
+      // client-side gate.
+      const refCode = affiliationCode || getRefCookie();
+      if (refCode) {
+        api
+          .post("/me/attribution", {
+            code: refCode,
+            source: affiliationCode ? "web_manual" : "web_cookie",
+          })
+          .catch(() => {});
+      }
 
       // Always go to onboarding. Email verification happens at the END of
       // onboarding (after Stripe), not before signup.

@@ -9,10 +9,15 @@
 
 import { useEffect, type ReactNode } from "react";
 import { initAnalytics } from "@/lib/analytics";
+import { captureRefCookie } from "@/lib/referral";
 
 export default function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
     initAnalytics();
+    // AUDITS/affiliate-system-plan.md §2.1 — unconditional, see
+    // referral.ts's own header for why this can't be per-user flag-gated
+    // pre-auth; the real gate is server-side, at signup.
+    captureRefCookie();
   }, []);
 
   return <>{children}</>;
