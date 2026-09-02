@@ -1064,6 +1064,7 @@ function ContactModal({
                           {INTERACTION_LABEL[i.type]}
                         </span>
                         <span
+                          data-ph-mask
                           style={{
                             fontSize: 11,
                             color: "var(--text-secondary)",

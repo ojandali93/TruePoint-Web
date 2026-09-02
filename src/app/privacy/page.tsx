@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 
-const CONTENT_VERSION = "2026.05.29";
+const CONTENT_VERSION = "2026.08.28";
 
 export default function PrivacyPage() {
   return (
@@ -142,7 +142,18 @@ export default function PrivacyPage() {
             link.
           </Section>
 
-          <Section title='9. Data retention'>
+          <Section title='9. In-app feedback'>
+            If you respond to an in-app feedback prompt (a satisfaction
+            rating, or a reason for cancelling), or contact support, we store
+            your response and the account/device metadata attached to it
+            (app version, platform, and what you were doing when you were
+            asked), retained per the schedule in the next section. Free-text
+            responses are treated with the same care as any other content you
+            submit — never shared outside ReverseHolo, and never used to
+            fabricate reviews or testimonials.
+          </Section>
+
+          <Section title='10. Data retention'>
             We keep your account data as long as your account is active. When
             you deactivate your account from settings, your personal data and
             collection are deleted within 30 days. Some anonymized or aggregated
@@ -151,7 +162,7 @@ export default function PrivacyPage() {
             law or for legitimate business operation.
           </Section>
 
-          <Section title='10. Your rights'>
+          <Section title='11. Your rights'>
             You can access and edit most of your data from inside the app
             (collection items, profile information, notification preferences).
             You can deactivate your account from settings at any time. If you
@@ -167,14 +178,14 @@ export default function PrivacyPage() {
             . We respond within 30 days.
           </Section>
 
-          <Section title='11. Children'>
+          <Section title='12. Children'>
             The service is not directed at children under 13 and we do not
             knowingly collect personal information from them. If you believe a
             child under 13 has provided personal information, email us and we
             will delete it.
           </Section>
 
-          <Section title='12. Security'>
+          <Section title='13. Security'>
             We use industry-standard security practices including encryption in
             transit (HTTPS), encryption at rest for the database, hashed
             passwords, and access controls on administrative tools. No system is
@@ -182,20 +193,20 @@ export default function PrivacyPage() {
             information we will notify you as required by applicable law.
           </Section>
 
-          <Section title='13. International transfers'>
+          <Section title='14. International transfers'>
             Our service is operated from the United States. If you use the
             service from outside the US, your information will be transferred to
             and processed in the US.
           </Section>
 
-          <Section title='14. Changes to this policy'>
+          <Section title='15. Changes to this policy'>
             We may update this policy as the service evolves. Material changes
             will be reflected in the "Last updated" date above and, where
             appropriate, communicated by email. Continued use of the service
             after a change constitutes acceptance.
           </Section>
 
-          <Section title='15. Contact'>
+          <Section title='16. Contact'>
             Questions or requests:{" "}
             <a
               href='mailto:support@reverseholo.io'

@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
+import {
+  CancellationReasonScreen,
+  type CancellationReason,
+} from "@/components/billing/CancellationReasonScreen";
 
 interface Subscription {
   id: string;
@@ -70,6 +74,7 @@ export default function BillingSettingsPage() {
   const [canceling, setCanceling] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showCancelReason, setShowCancelReason] = useState(false);
 
   const load = async () => {
     try {
@@ -91,18 +96,46 @@ export default function BillingSettingsPage() {
     return () => window.clearTimeout(t);
   }, []);
 
-  const handleCancel = async () => {
-    if (
-      !window.confirm(
-        "Cancel your subscription? You'll keep access until the end of your current period.",
-      )
-    )
-      return;
+  // Flow B1 (FEEDBACK_DESIGN.md Phase 3): the reason screen replaces the old
+  // window.confirm(...) — a blocking native dialog, the same class of thing
+  // UI_AUDIT.md's Alert.alert findings flag on mobile. Cancellation always
+  // proceeds regardless of the answer; performCancel is the only place that
+  // actually calls DELETE /billing/subscription.
+  const performCancel = async (
+    feedback?: { reason: CancellationReason; freeText: string },
+  ) => {
     setCanceling(true);
     setError(null);
     setMessage(null);
     try {
       await api.delete("/billing/subscription");
+
+      // Feedback write happens AFTER the cancel call succeeds — the server
+      // only resolves Flow B2's marker on a row that already has
+      // cancel_requested_at set (see CancellationReasonScreen's header
+      // comment); reversing this order would silently no-op it. Never lets
+      // a feedback-write hiccup block or taint the cancellation outcome
+      // already shown to the user below — the cancellation itself already
+      // succeeded by this point.
+      try {
+        if (feedback) {
+          await api.post("/product-feedback", {
+            feedback_type: "cancellation",
+            cancellation_reasons: [feedback.reason],
+            free_text: feedback.freeText.trim() || undefined,
+            trigger_context: "cancel_flow_b1",
+            platform: "web",
+          });
+        } else {
+          await api.post("/product-feedback/dismiss", {
+            feedback_type: "cancellation",
+            trigger_context: "cancel_flow_b1",
+          });
+        }
+      } catch (feedbackErr) {
+        console.error("[Billing] cancellation feedback failed:", feedbackErr);
+      }
+
       setMessage("Subscription canceled. Access continues until period end.");
       await load();
     } catch (err) {
@@ -110,6 +143,7 @@ export default function BillingSettingsPage() {
       setError("Couldn't cancel. Please try again or contact support.");
     } finally {
       setCanceling(false);
+      setShowCancelReason(false);
     }
   };
 
@@ -410,7 +444,7 @@ export default function BillingSettingsPage() {
                   You&apos;ll keep access until the end of your current period.
                 </div>
                 <button
-                  onClick={handleCancel}
+                  onClick={() => setShowCancelReason(true)}
                   disabled={canceling}
                   style={{
                     padding: "8px 16px",
@@ -462,6 +496,13 @@ export default function BillingSettingsPage() {
           )}
         </>
       )}
+
+      <CancellationReasonScreen
+        open={showCancelReason}
+        busy={canceling}
+        onSkip={() => void performCancel()}
+        onSend={(reason, freeText) => void performCancel({ reason, freeText })}
+      />
     </div>
   );
 }
