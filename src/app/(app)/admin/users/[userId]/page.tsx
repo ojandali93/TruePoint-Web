@@ -87,6 +87,17 @@ export default function AdminUserDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [collectionOpen, setCollectionOpen] = useState(false);
+  // /detail is independently slow for a large account -- it resolves live
+  // inventory valuation (getInventory) across every item, which can run
+  // well past axios's 10s default for a few-hundred-item collection. Found
+  // live-testing this page against a real 484-item account (Part B's own
+  // proof run) -- NOT a Part B regression, getUserDetail already did this;
+  // it just never had a real client with a real timeout exercise it before.
+  // Fetched on its own effect, with its own loading flag and a raised
+  // per-request timeout, so a slow profile header never blocks the (fast)
+  // report lists below from rendering.
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -95,8 +106,7 @@ export default function AdminUserDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const [detailRes, aiRes, centeringRes] = await Promise.all([
-          api.get<{ data: UserDetail }>(`/admin/users/${userId}/detail`),
+        const [aiRes, centeringRes] = await Promise.all([
           api.get<{ data: AIGradingReportRow[] }>(
             `/admin/users/${userId}/ai-grading-reports`,
           ),
@@ -105,7 +115,6 @@ export default function AdminUserDetailPage() {
           ),
         ]);
         if (!mounted) return;
-        setDetail(detailRes.data.data);
         setAiReports(aiRes.data.data ?? []);
         setCenteringReports(centeringRes.data.data ?? []);
       } catch (e) {
@@ -114,6 +123,33 @@ export default function AdminUserDetailPage() {
         }
       } finally {
         if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      setDetailLoading(true);
+      setDetailError(null);
+      try {
+        const r = await api.get<{ data: UserDetail }>(
+          `/admin/users/${userId}/detail`,
+          { timeout: 30000 },
+        );
+        if (mounted) setDetail(r.data.data);
+      } catch (e) {
+        if (mounted) {
+          setDetailError(
+            e instanceof Error ? e.message : "Failed to load profile.",
+          );
+        }
+      } finally {
+        if (mounted) setDetailLoading(false);
       }
     })();
     return () => {
@@ -142,23 +178,24 @@ export default function AdminUserDetailPage() {
     );
   }
 
-  if (error || !detail) {
+  if (error) {
     return (
       <div style={{ padding: 40 }}>
-        <div style={{ color: "#EF4444", fontSize: 13 }}>
-          {error ?? "User not found."}
-        </div>
+        <div style={{ color: "#EF4444", fontSize: 13 }}>{error}</div>
       </div>
     );
   }
 
   const displayName =
-    detail.profile.full_name || detail.profile.username || detail.profile.id;
-  const plan = detail.subscription?.plan ?? "starter";
+    detail?.profile.full_name || detail?.profile.username || userId;
+  const plan = detail?.subscription?.plan ?? "starter";
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      {/* Header */}
+      {/* Header — its own loading/error state (detailLoading/detailError),
+          independent of the report lists below (see the two-effect split
+          above): a slow /detail response never blocks the rest of the
+          page from rendering. */}
       <div
         style={{
           padding: "28px 40px",
@@ -190,8 +227,9 @@ export default function AdminUserDetailPage() {
             marginBottom: 6,
           }}
         >
-          {plan.toUpperCase()}
-          {detail.subscription?.status ? ` · ${detail.subscription.status}` : ""}
+          {detailLoading
+            ? "LOADING PROFILE…"
+            : `${plan.toUpperCase()}${detail?.subscription?.status ? ` · ${detail.subscription.status}` : ""}`}
         </div>
         <h1
           style={{
@@ -204,8 +242,16 @@ export default function AdminUserDetailPage() {
           {displayName}
         </h1>
         <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
-          {detail.profile.username ? `@${detail.profile.username} · ` : ""}
-          joined {new Date(detail.profile.created_at).toLocaleDateString()}
+          {detailError ? (
+            <span style={{ color: "#EF4444" }}>{detailError}</span>
+          ) : detail ? (
+            <>
+              {detail.profile.username ? `@${detail.profile.username} · ` : ""}
+              joined {new Date(detail.profile.created_at).toLocaleDateString()}
+            </>
+          ) : (
+            "Loading profile…"
+          )}
         </div>
       </div>
 
@@ -223,7 +269,7 @@ export default function AdminUserDetailPage() {
         {/* AI Grading Reports */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>
-            AI Grading Reports ({detail.usage.aiGradingReports})
+            AI Grading Reports ({aiReports.length})
           </div>
           <div
             style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}
@@ -258,7 +304,7 @@ export default function AdminUserDetailPage() {
         {/* Centering Reports */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>
-            Centering Reports ({detail.usage.centeringReports})
+            Centering Reports ({centeringReports.length})
           </div>
           <div
             style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}
@@ -302,8 +348,9 @@ export default function AdminUserDetailPage() {
             <div>
               <div style={sectionTitleStyle}>Collection (read-only)</div>
               <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                {detail.usage.collections} collection
-                {detail.usage.collections === 1 ? "" : "s"} tracked.
+                {detail
+                  ? `${detail.usage.collections} collection${detail.usage.collections === 1 ? "" : "s"} tracked.`
+                  : "Loading…"}
               </div>
             </div>
             {!collectionOpen && (
